@@ -8,22 +8,17 @@ const useAppStore = create((set, get) => ({
   // ─── Auth ────────────────────────────────────────────────
   currentUser: null,
   accessToken: null,
-  isInitializing: true, // checking stored session on app load
+  isInitializing: true,
 
-  // Initialize session from stored refresh token
+  // Initialize session — refresh token lives in httpOnly cookie, no localStorage
   initializeAuth: async () => {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) {
-      set({ isInitializing: false });
-      return;
-    }
     try {
-      const { data } = await authApi.refresh(refreshToken);
+      const { data } = await authApi.refresh();
       window.__accessToken = data.accessToken;
       set({ currentUser: data.user, accessToken: data.accessToken, isInitializing: false });
       await get().loadAll();
     } catch {
-      localStorage.removeItem('refreshToken');
+      window.__accessToken = null;
       set({ currentUser: null, accessToken: null, isInitializing: false });
     }
   },
@@ -32,20 +27,18 @@ const useAppStore = create((set, get) => ({
   login: async (email, password) => {
     const { data } = await authApi.login(email, password);
     if (data.accessToken) {
-      // No MFA — direct login
+      // No MFA — direct login; refresh token is set as httpOnly cookie by server
       window.__accessToken = data.accessToken;
-      localStorage.setItem('refreshToken', data.refreshToken);
       set({ currentUser: data.user, accessToken: data.accessToken });
       await get().loadAll();
     }
-    return data; // caller handles MFA flow
+    return data;
   },
 
   // Complete MFA verification
   completeMfa: async (mfaToken, code) => {
     const { data } = await authApi.verifyMfa(mfaToken, code);
     window.__accessToken = data.accessToken;
-    localStorage.setItem('refreshToken', data.refreshToken);
     set({ currentUser: data.user, accessToken: data.accessToken });
     await get().loadAll();
     return data;
@@ -55,17 +48,14 @@ const useAppStore = create((set, get) => ({
   enableMfa: async (mfaToken, code) => {
     const { data } = await authApi.enableMfa(mfaToken, code);
     window.__accessToken = data.accessToken;
-    localStorage.setItem('refreshToken', data.refreshToken);
     set({ currentUser: data.user, accessToken: data.accessToken });
     await get().loadAll();
     return data;
   },
 
   logout: async () => {
-    const refreshToken = localStorage.getItem('refreshToken');
-    try { await authApi.logout(refreshToken); } catch {}
+    try { await authApi.logout(); } catch {}
     window.__accessToken = null;
-    localStorage.removeItem('refreshToken');
     set({
       currentUser: null, accessToken: null,
       contracts: [], orders: [], shipments: [], payments: [],
@@ -104,20 +94,17 @@ const useAppStore = create((set, get) => ({
         counterpartiesApi.list(),
       ]);
 
-      // Users only for admin/director
       const { currentUser } = get();
       let users = [];
       if (currentUser && ['admin', 'director'].includes(currentUser.role)) {
         try { const res = await usersApi.list(); users = res.data; } catch {}
       }
 
-      // Audit log only for admin/director/analyst
       let auditLog = [];
       if (currentUser && ['admin', 'director', 'analyst'].includes(currentUser.role)) {
         try { const res = await auditApi.list(); auditLog = res.data.data; } catch {}
       }
 
-      // Chat messages
       let chatMessages = [];
       try { const res = await chatApi.list(); chatMessages = res.data; } catch {}
 
@@ -182,7 +169,6 @@ const useAppStore = create((set, get) => ({
   addShipment: async (shipment) => {
     const { data } = await shipmentsApi.create(shipment);
     set(s => ({ shipments: [data, ...s.shipments] }));
-    // Reload payments since a new one is auto-created
     const res = await paymentsApi.list();
     set({ payments: res.data });
     return data;

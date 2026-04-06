@@ -3,6 +3,7 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,   // send httpOnly refresh-token cookie automatically
 });
 
 // Track if we're currently refreshing to avoid loops
@@ -29,7 +30,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor — handle token expiry
+// Response interceptor — handle token expiry via cookie-based refresh
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -48,16 +49,10 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = localStorage.getItem('refreshToken');
-      if (!refreshToken) {
-        window.__accessToken = null;
-        window.location.href = '/login';
-        return Promise.reject(error);
-      }
-
       try {
-        const response = await axios.post('/api/auth/refresh', { refreshToken });
-        const { accessToken, user } = response.data;
+        // Cookie is sent automatically — no body needed
+        const response = await axios.post('/api/auth/refresh', {}, { withCredentials: true });
+        const { accessToken } = response.data;
         window.__accessToken = accessToken;
         processQueue(null, accessToken);
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
@@ -65,7 +60,6 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         window.__accessToken = null;
-        localStorage.removeItem('refreshToken');
         window.location.href = '/login';
         return Promise.reject(refreshError);
       } finally {
@@ -83,9 +77,11 @@ export const authApi = {
   verifyMfa: (mfaToken, code) => api.post('/auth/mfa/verify', { mfaToken, code }),
   setupMfa: (mfaToken) => api.post('/auth/mfa/setup', { mfaToken }),
   enableMfa: (mfaToken, code) => api.post('/auth/mfa/enable', { mfaToken, code }),
-  refresh: (refreshToken) => api.post('/auth/refresh', { refreshToken }),
-  logout: (refreshToken) => api.post('/auth/logout', { refreshToken }),
+  refresh: () => api.post('/auth/refresh', {}),
+  logout: () => api.post('/auth/logout', {}),
   me: () => api.get('/auth/me'),
+  resetPasswordRequest: (email) => api.post('/auth/reset-password/request', { email }),
+  resetPasswordConfirm: (token, password) => api.post('/auth/reset-password/confirm', { token, password }),
 };
 
 // Contracts API

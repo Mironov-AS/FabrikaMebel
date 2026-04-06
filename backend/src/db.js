@@ -247,4 +247,26 @@ db.exec(`
   );
 `);
 
+// Add account-lockout columns if missing (SQLite does not support IF NOT EXISTS for ALTER)
+const existingCols = db.pragma('table_info(users)').map(c => c.name);
+if (!existingCols.includes('failed_attempts')) {
+  db.exec('ALTER TABLE users ADD COLUMN failed_attempts INTEGER DEFAULT 0');
+}
+if (!existingCols.includes('locked_until')) {
+  db.exec('ALTER TABLE users ADD COLUMN locked_until TEXT');
+}
+
+// Password-reset tokens table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    expires_at TEXT NOT NULL,
+    used INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+`);
+
 module.exports = db;
