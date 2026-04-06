@@ -9,6 +9,7 @@ import OrdersList from './pages/orders/OrdersList';
 import OrderDetail from './pages/orders/OrderDetail';
 import ProductionPage from './pages/production/ProductionPage';
 import ShipmentsPage from './pages/shipments/ShipmentsPage';
+import PaymentsPage from './pages/payments/PaymentsPage';
 import ClaimsPage from './pages/claims/ClaimsPage';
 import ReportsPage from './pages/reports/ReportsPage';
 import ChatPage from './pages/chat/ChatPage';
@@ -41,7 +42,7 @@ export default function App() {
                   <Route path="/orders/:orderId" element={<OrderDetail />} />
                   <Route path="/production" element={<ProductionPage />} />
                   <Route path="/shipments" element={<ShipmentsPage />} />
-                  <Route path="/payments" element={<ShipmentsPage />} />
+                  <Route path="/payments" element={<PaymentsPage />} />
                   <Route path="/claims" element={<ClaimsPage />} />
                   <Route path="/reports" element={<ReportsPage />} />
                   <Route path="/chat" element={<ChatPage />} />
