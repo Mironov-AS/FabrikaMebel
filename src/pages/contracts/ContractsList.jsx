@@ -5,7 +5,7 @@ import {
   Loader2, CheckCircle, X, File,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
-import { COUNTERPARTIES, formatMoney, STATUS_LABELS } from '../../data/mockData';
+import { formatMoney, STATUS_LABELS } from '../../data/mockData';
 import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 import Table from '../../components/ui/Table';
@@ -171,6 +171,7 @@ const EMPTY_FORM = {
 
 function NewContractModal({ isOpen, onClose }) {
   const addContract = useAppStore(s => s.addContract);
+  const counterparties = useAppStore(s => s.counterparties);
   const [form, setForm] = useState(EMPTY_FORM);
 
   const set = (key) => (e) => setForm(prev => ({ ...prev, [key]: e.target.value }));
@@ -225,7 +226,7 @@ function NewContractModal({ isOpen, onClose }) {
           <label className="label">Контрагент <span className="text-red-400">*</span></label>
           <select className="input" value={form.counterpartyId} onChange={set('counterpartyId')}>
             <option value="">— Выберите контрагента —</option>
-            {COUNTERPARTIES.map(cp => (
+            {counterparties.map(cp => (
               <option key={cp.id} value={cp.id}>{cp.name}</option>
             ))}
           </select>
@@ -267,6 +268,7 @@ function NewContractModal({ isOpen, onClose }) {
 
 export default function ContractsList() {
   const contracts = useAppStore(s => s.contracts);
+  const counterparties = useAppStore(s => s.counterparties);
   const navigate = useNavigate();
 
   const [search, setSearch] = useState('');
@@ -274,8 +276,10 @@ export default function ContractsList() {
   const [importOpen, setImportOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
 
+  const findCp = (id) => counterparties.find(p => p.id === id);
+
   const filtered = contracts.filter(c => {
-    const cp = COUNTERPARTIES.find(p => p.id === c.counterpartyId);
+    const cp = findCp(c.counterpartyId);
     const matchSearch =
       !search ||
       c.number.toLowerCase().includes(search.toLowerCase()) ||
@@ -290,7 +294,7 @@ export default function ContractsList() {
     {
       key: 'counterpartyId',
       label: 'Контрагент',
-      render: (val) => COUNTERPARTIES.find(c => c.id === val)?.name ?? '—',
+      render: (val) => findCp(val)?.name ?? '—',
     },
     { key: 'date', label: 'Дата' },
     { key: 'validUntil', label: 'Срок действия', render: (val) => val || '—' },

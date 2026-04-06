@@ -3,7 +3,7 @@ import {
   AlertTriangle, Plus, Clock, CheckCircle, XCircle, Eye, ChevronRight,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
-import { COUNTERPARTIES, CONTRACTS, ORDERS, SHIPMENTS, STATUS_LABELS, USERS } from '../../data/mockData';
+import { STATUS_LABELS } from '../../data/mockData';
 import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 import StatCard from '../../components/ui/StatCard';
@@ -41,11 +41,11 @@ export default function ClaimsPage() {
   const [selectedClaim, setSelectedClaim] = useState(null);
   const [resolutionForm, setResolutionForm] = useState(emptyResolutionForm);
 
-  const { claims, addClaim, updateClaim } = useAppStore();
+  const { claims, contracts, shipments, orders, counterparties, users, addClaim, updateClaim } = useAppStore();
 
-  const getCounterparty = (id) => COUNTERPARTIES.find((c) => c.id === id);
-  const getContract = (id) => CONTRACTS.find((c) => c.id === id);
-  const getShipment = (id) => SHIPMENTS.find((s) => s.id === id);
+  const getCounterparty = (id) => counterparties.find((c) => c.id === id);
+  const getContract = (id) => contracts.find((c) => c.id === id);
+  const getShipment = (id) => shipments.find((s) => s.id === id);
 
   // KPIs
   const openCount = claims.filter((c) => c.status === 'open').length;
@@ -55,15 +55,15 @@ export default function ClaimsPage() {
 
   // Filtered shipments for selected contract
   const contractShipments = claimForm.contractId
-    ? SHIPMENTS.filter((s) => {
-        const order = ORDERS.find((o) => o.id === s.orderId);
+    ? shipments.filter((s) => {
+        const order = orders.find((o) => o.id === s.orderId);
         return order?.contractId === Number(claimForm.contractId);
       })
     : [];
 
   // Spec items for selected shipment
   const shipmentItems = claimForm.shipmentId
-    ? (SHIPMENTS.find((s) => s.id === Number(claimForm.shipmentId))?.items ?? [])
+    ? (shipments.find((s) => s.id === Number(claimForm.shipmentId))?.items ?? [])
     : [];
 
   function handleNewClaimSubmit() {
@@ -354,9 +354,9 @@ export default function ClaimsPage() {
               onChange={(e) => setClaimForm((f) => ({ ...f, contractId: e.target.value, shipmentId: '', specItemId: '' }))}
             >
               <option value="">— Выберите договор —</option>
-              {CONTRACTS.map((c) => (
+              {contracts.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.number} — {COUNTERPARTIES.find((cp) => cp.id === c.counterpartyId)?.name}
+                  {c.number} — {counterparties.find((cp) => cp.id === c.counterpartyId)?.name}
                 </option>
               ))}
             </select>
@@ -411,7 +411,7 @@ export default function ClaimsPage() {
               onChange={(e) => setClaimForm((f) => ({ ...f, responsible: e.target.value }))}
             >
               <option value="">— Выберите —</option>
-              {USERS.map((u) => (
+              {users.map((u) => (
                 <option key={u.id} value={u.name}>{u.name}</option>
               ))}
             </select>

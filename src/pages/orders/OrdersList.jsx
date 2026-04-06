@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Filter, X, Trash2 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
-import { COUNTERPARTIES, CONTRACTS, formatMoney, STATUS_LABELS } from '../../data/mockData';
+import { formatMoney, STATUS_LABELS } from '../../data/mockData';
 import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 import Table from '../../components/ui/Table';
@@ -62,6 +62,7 @@ const EMPTY_FORM = {
 function NewOrderModal({ isOpen, onClose }) {
   const addOrder = useAppStore(s => s.addOrder);
   const contracts = useAppStore(s => s.contracts);
+  const counterparties = useAppStore(s => s.counterparties);
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [items, setItems] = useState([{ ...EMPTY_ITEM, _key: Date.now() }]);
@@ -71,7 +72,7 @@ function NewOrderModal({ isOpen, onClose }) {
   // Auto-fill counterparty from selected contract
   const selectedContract = contracts.find(c => c.id === parseInt(form.contractId, 10));
   const counterparty = selectedContract
-    ? COUNTERPARTIES.find(cp => cp.id === selectedContract.counterpartyId)
+    ? counterparties.find(cp => cp.id === selectedContract.counterpartyId)
     : null;
 
   const handleItemChange = (idx, key, value) => {
@@ -264,6 +265,8 @@ const PRIORITY_OPTIONS = ['high', 'medium', 'low'];
 
 export default function OrdersList() {
   const orders = useAppStore(s => s.orders);
+  const contracts = useAppStore(s => s.contracts);
+  const counterparties = useAppStore(s => s.counterparties);
   const navigate = useNavigate();
 
   const [search, setSearch] = useState('');
@@ -272,8 +275,8 @@ export default function OrdersList() {
   const [newOpen, setNewOpen] = useState(false);
 
   const filtered = orders.filter(o => {
-    const contract = CONTRACTS.find(c => c.id === o.contractId);
-    const cp = COUNTERPARTIES.find(c => c.id === o.counterpartyId);
+    const contract = contracts.find(c => c.id === o.contractId);
+    const cp = counterparties.find(c => c.id === o.counterpartyId);
     const matchSearch =
       !search ||
       o.number.toLowerCase().includes(search.toLowerCase()) ||
@@ -290,7 +293,7 @@ export default function OrdersList() {
       key: 'contractId',
       label: 'Договор',
       render: (val) => {
-        const c = CONTRACTS.find(c => c.id === val);
+        const c = contracts.find(c => c.id === val);
         return c ? (
           <span className="text-blue-600 font-medium">{c.number}</span>
         ) : '—';
@@ -299,7 +302,7 @@ export default function OrdersList() {
     {
       key: 'counterpartyId',
       label: 'Контрагент',
-      render: (val) => COUNTERPARTIES.find(c => c.id === val)?.name ?? '—',
+      render: (val) => counterparties.find(c => c.id === val)?.name ?? '—',
     },
     {
       key: 'shipmentDeadline',

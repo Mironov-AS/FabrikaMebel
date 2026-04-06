@@ -4,7 +4,7 @@ import {
   Eye, EyeOff, RefreshCw, ToggleLeft, ToggleRight, Download, Filter,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
-import { ROLES, ROLE_LABELS, AUDIT_LOG } from '../../data/mockData';
+import { ROLES, ROLE_LABELS } from '../../data/mockData';
 import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 
@@ -87,12 +87,12 @@ export default function AdminPage() {
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [apiKey] = useState('sk-live-aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890');
 
-  const { users, addUser, updateUser, deleteUser } = useAppStore();
+  const { users, auditLog, addUser, updateUser, deleteUser } = useAppStore();
 
   // ── User handlers ──────────────────────────────────────────
   function handleAddUser() {
     if (!userForm.name || !userForm.email) return;
-    addUser({ name: userForm.name, email: userForm.email, role: userForm.role, lastLogin: '—' });
+    addUser({ name: userForm.name, email: userForm.email, role: userForm.role, password: userForm.password || 'password123' });
     setUserForm(emptyUserForm);
     setShowAddUserModal(false);
   }
@@ -121,14 +121,14 @@ export default function AdminPage() {
   }
 
   // ── Audit filtering ───────────────────────────────────────
-  const filteredAudit = AUDIT_LOG.filter((entry) => {
+  const filteredAudit = auditLog.filter((entry) => {
     if (auditFilters.user && !entry.user.toLowerCase().includes(auditFilters.user.toLowerCase())) return false;
     if (auditFilters.entity && entry.entity !== auditFilters.entity) return false;
     return true;
   });
 
-  const auditEntities = [...new Set(AUDIT_LOG.map((e) => e.entity))];
-  const auditUsers = [...new Set(AUDIT_LOG.map((e) => e.user))];
+  const auditEntities = [...new Set(auditLog.map((e) => e.entity))];
+  const auditUsers = [...new Set(auditLog.map((e) => e.user))];
 
   // ── Tabs config ──────────────────────────────────────────
   const TABS = [

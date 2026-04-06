@@ -5,7 +5,7 @@ import {
   Clock, Plus, User, Building,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
-import { COUNTERPARTIES, formatMoney, STATUS_LABELS } from '../../data/mockData';
+import { formatMoney, STATUS_LABELS } from '../../data/mockData';
 import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 import Table from '../../components/ui/Table';
@@ -39,7 +39,8 @@ function InfoRow({ label, value }) {
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
 function InfoTab({ contract }) {
-  const cp = COUNTERPARTIES.find(c => c.id === contract.counterpartyId);
+  const counterparties = useAppStore(s => s.counterparties);
+  const cp = counterparties.find(c => c.id === contract.counterpartyId);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -339,6 +340,7 @@ export default function ContractDetail() {
   const { contractId } = useParams();
   const navigate = useNavigate();
   const contracts = useAppStore(s => s.contracts);
+  const counterparties = useAppStore(s => s.counterparties);
   const [activeTab, setActiveTab] = useState('info');
 
   const id = parseInt(contractId, 10);
@@ -374,7 +376,7 @@ export default function ContractDetail() {
               <StatusBadge status={contract.status} />
             </div>
             <p className="text-sm text-gray-500 mt-0.5">
-              {COUNTERPARTIES.find(c => c.id === contract.counterpartyId)?.name ?? '—'}
+              {counterparties.find(c => c.id === contract.counterpartyId)?.name ?? '—'}
             </p>
           </div>
         </div>

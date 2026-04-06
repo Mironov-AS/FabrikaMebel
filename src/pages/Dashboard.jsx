@@ -5,7 +5,7 @@ import {
   TrendingUp, Users, ChevronRight,
 } from 'lucide-react';
 import useAppStore from '../store/appStore';
-import { COUNTERPARTIES, formatMoney, ROLES } from '../data/mockData';
+import { formatMoney, ROLES } from '../data/mockData';
 import StatCard from '../components/ui/StatCard';
 import StatusBadge from '../components/ui/StatusBadge';
 import Table from '../components/ui/Table';
@@ -43,7 +43,8 @@ function NotificationItem({ n }) {
 }
 
 function OverdueObligationCard({ contract, obligation }) {
-  const cp = COUNTERPARTIES.find(c => c.id === contract.counterpartyId);
+  const counterparties = useAppStore(s => s.counterparties);
+  const cp = counterparties.find(c => c.id === contract.counterpartyId);
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg border border-orange-200 bg-orange-50">
       <AlertTriangle size={16} className="text-orange-500 flex-shrink-0 mt-0.5" />
@@ -134,7 +135,7 @@ function SalesSection({ contracts, orders, chatMessages }) {
           )}
           {recentChats.map(msg => {
             const contract = contracts.find(c => c.id === msg.contractId);
-            const cp = COUNTERPARTIES.find(c => c.id === msg.counterpartyId);
+            const cp = counterparties.find(c => c.id === msg.counterpartyId);
             return (
               <div key={msg.id} className="flex items-start gap-3 px-4 py-3">
                 <MessageSquare size={15} className={`mt-0.5 flex-shrink-0 ${msg.from === 'client' ? 'text-blue-500' : 'text-gray-400'}`} />
@@ -162,7 +163,7 @@ function SalesSection({ contracts, orders, chatMessages }) {
         <SectionTitle>Активные договоры</SectionTitle>
         <div className="card divide-y divide-gray-100">
           {contracts.filter(c => c.status === 'active').map(c => {
-            const cp = COUNTERPARTIES.find(p => p.id === c.counterpartyId);
+            const cp = counterparties.find(p => p.id === c.counterpartyId);
             return (
               <div key={c.id} className="flex items-center justify-between px-4 py-3">
                 <div>
@@ -183,12 +184,13 @@ function SalesSection({ contracts, orders, chatMessages }) {
 }
 
 function AccountantSection({ payments, contracts }) {
+  const counterparties = useAppStore(s => s.counterparties);
   const paymentColumns = [
     { key: 'invoiceNumber', label: 'Счёт' },
     {
       key: 'counterpartyId',
       label: 'Контрагент',
-      render: (val) => COUNTERPARTIES.find(c => c.id === val)?.name ?? '—',
+      render: (val) => counterparties.find(c => c.id === val)?.name ?? '—',
     },
     { key: 'amount', label: 'Сумма', render: (val) => formatMoney(val) },
     { key: 'dueDate', label: 'Срок оплаты' },
@@ -294,6 +296,7 @@ export default function Dashboard() {
     auditLog,
     productionTasks,
     chatMessages,
+    counterparties,
   } = useAppStore();
 
   const role = currentUser?.role;

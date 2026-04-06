@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Truck, Plus, AlertCircle } from 'lucide-react';
 import useAppStore from '../../store/appStore';
-import { COUNTERPARTIES, ORDERS, formatMoney } from '../../data/mockData';
+import { formatMoney } from '../../data/mockData';
 import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 
@@ -29,10 +29,10 @@ export default function ShipmentsPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyShipmentForm);
 
-  const { shipments, addShipment } = useAppStore();
+  const { shipments, orders, counterparties, addShipment } = useAppStore();
 
-  const getCounterparty = (id) => COUNTERPARTIES.find((c) => c.id === id);
-  const getOrder = (id) => ORDERS.find((o) => o.id === id);
+  const getCounterparty = (id) => counterparties.find((c) => c.id === id);
+  const getOrder = (id) => orders.find((o) => o.id === id);
 
   const shipmentsWithMeta = shipments.map((s) => ({
     ...s,
@@ -171,9 +171,9 @@ export default function ShipmentsPage() {
               onChange={(e) => setForm((f) => ({ ...f, orderId: e.target.value }))}
             >
               <option value="">— Выберите заказ —</option>
-              {ORDERS.map((o) => (
+              {orders.map((o) => (
                 <option key={o.id} value={o.id}>
-                  {o.number} — {COUNTERPARTIES.find((c) => c.id === o.counterpartyId)?.name}
+                  {o.number} — {counterparties.find((c) => c.id === o.counterpartyId)?.name}
                 </option>
               ))}
             </select>

@@ -5,7 +5,7 @@ import {
   TruckIcon, ClipboardList,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
-import { COUNTERPARTIES, CONTRACTS, formatMoney, STATUS_LABELS } from '../../data/mockData';
+import { formatMoney, STATUS_LABELS } from '../../data/mockData';
 import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 import Table from '../../components/ui/Table';
@@ -466,6 +466,8 @@ export default function OrderDetail() {
   const { orderId } = useParams();
   const navigate    = useNavigate();
   const orders      = useAppStore(s => s.orders);
+  const contracts   = useAppStore(s => s.contracts);
+  const counterparties = useAppStore(s => s.counterparties);
 
   const [activeTab,       setActiveTab]       = useState('spec');
   const [shipmentOpen,    setShipmentOpen]    = useState(false);
@@ -487,8 +489,8 @@ export default function OrderDetail() {
     );
   }
 
-  const contract    = CONTRACTS.find(c => c.id === order.contractId);
-  const counterparty = COUNTERPARTIES.find(c => c.id === order.counterpartyId);
+  const contract    = contracts.find(c => c.id === order.contractId);
+  const counterparty = counterparties.find(c => c.id === order.counterpartyId);
   const priorityMeta = PRIORITY_MAP[order.priority] ?? { cls: 'badge-gray', label: order.priority };
 
   return (

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CreditCard, AlertCircle, Clock, CheckCircle } from 'lucide-react';
 import useAppStore from '../../store/appStore';
-import { COUNTERPARTIES, formatMoney } from '../../data/mockData';
+import { formatMoney } from '../../data/mockData';
 import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 import StatCard from '../../components/ui/StatCard';
@@ -23,9 +23,9 @@ export default function PaymentsPage() {
   const [paymentModal, setPaymentModal] = useState(null);
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
 
-  const { payments, registerPayment } = useAppStore();
+  const { payments, counterparties, registerPayment } = useAppStore();
 
-  const getCounterparty = (id) => COUNTERPARTIES.find((c) => c.id === id);
+  const getCounterparty = (id) => counterparties.find((c) => c.id === id);
 
   // Summary
   const totalReceivable = payments

@@ -4,7 +4,8 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { BarChart2, FileText, CreditCard, Download, FileSpreadsheet, Eye } from 'lucide-react';
-import { COUNTERPARTIES, CONTRACTS, SHIPMENTS, formatMoney } from '../../data/mockData';
+import { formatMoney } from '../../data/mockData';
+import useAppStore from '../../store/appStore';
 import Modal from '../../components/ui/Modal';
 
 const TODAY = new Date(2026, 3, 6);
@@ -90,9 +91,9 @@ const REPORT_TEMPLATES = [
 ];
 
 // ── Receivables computation ────────────────────────────────────────────────────
-function buildReceivables() {
-  return COUNTERPARTIES.map((cp) => {
-    const cpShipments = SHIPMENTS.filter((s) => s.counterpartyId === cp.id);
+function buildReceivables(counterparties, shipments) {
+  return counterparties.map((cp) => {
+    const cpShipments = shipments.filter((s) => s.counterpartyId === cp.id);
     const totalShipped = cpShipments.reduce((acc, s) => acc + s.amount, 0);
     const totalPaid = cpShipments.reduce((acc, s) => acc + (s.paidAmount || 0), 0);
     const debt = totalShipped - totalPaid;
@@ -125,8 +126,11 @@ const CHART_TOOLTIP_FORMATTER = (value) =>
 export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [previewReport, setPreviewReport] = useState(null);
+  const contracts = useAppStore(s => s.contracts);
+  const shipments = useAppStore(s => s.shipments);
+  const counterparties = useAppStore(s => s.counterparties);
 
-  const receivables = buildReceivables();
+  const receivables = buildReceivables(counterparties, shipments);
   const totals = receivables.reduce(
     (acc, r) => ({
       totalShipped: acc.totalShipped + r.totalShipped,
@@ -137,9 +141,9 @@ export default function ReportsPage() {
     { totalShipped: 0, totalPaid: 0, debt: 0, penalty: 0 },
   );
 
-  // Pie chart data from CONTRACTS
+  // Pie chart data from contracts
   const contractStatusMap = {};
-  CONTRACTS.forEach((c) => {
+  contracts.forEach((c) => {
     contractStatusMap[c.status] = (contractStatusMap[c.status] || 0) + 1;
   });
   const contractStatusLabels = { active: 'Активен', completed: 'Завершён', suspended: 'Приостановлен', draft: 'Черновик' };

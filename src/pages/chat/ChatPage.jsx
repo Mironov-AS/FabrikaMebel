@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, ChevronDown, MessageSquare } from 'lucide-react';
 import useAppStore from '../../store/appStore';
-import { COUNTERPARTIES, CONTRACTS } from '../../data/mockData';
+
 
 const QUICK_REPLIES = [
   'Заказ принят в производство',
@@ -35,7 +35,7 @@ function buildConversations(messages) {
 }
 
 export default function ChatPage() {
-  const { chatMessages, sendMessage, currentUser } = useAppStore();
+  const { chatMessages, contracts, counterparties, sendMessage, currentUser } = useAppStore();
   const [activeConv, setActiveConv] = useState(null);
   const [inputText, setInputText] = useState('');
   const [showQuickReplies, setShowQuickReplies] = useState(false);
@@ -55,8 +55,8 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, activeConv]);
 
-  const getCounterparty = (id) => COUNTERPARTIES.find((c) => c.id === id);
-  const getContract = (id) => CONTRACTS.find((c) => c.id === id);
+  const getCounterparty = (id) => counterparties.find((c) => c.id === id);
+  const getContract = (id) => contracts.find((c) => c.id === id);
 
   // Messages for active conversation
   const activeMessages = activeConv
