@@ -58,6 +58,22 @@ const DOCUMENT_TEMPLATES = [
 
 const emptyUserForm = { name: '', email: '', role: ROLES.SALES_MANAGER, password: '' };
 
+function validateUserForm(form) {
+  const errors = {};
+  if (!form.name.trim()) errors.name = 'Введите имя';
+  if (!form.email.trim()) {
+    errors.email = 'Введите email';
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+    errors.email = 'Некорректный формат email';
+  }
+  if (!form.password) {
+    errors.password = 'Введите пароль';
+  } else if (form.password.length < 8) {
+    errors.password = 'Пароль должен содержать не менее 8 символов';
+  }
+  return errors;
+}
+
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('users');
 
@@ -65,6 +81,7 @@ export default function AdminPage() {
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [editRoleModal, setEditRoleModal] = useState(null); // user object
   const [userForm, setUserForm] = useState(emptyUserForm);
+  const [userFormErrors, setUserFormErrors] = useState({});
   const [editRoleValue, setEditRoleValue] = useState('');
 
   // System settings
@@ -83,17 +100,22 @@ export default function AdminPage() {
   // Integrations
   const [integrations, setIntegrations] = useState(INTEGRATIONS_INITIAL);
 
-  // API keys
+  // API keys — loaded from environment variable, never hardcoded in source
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
-  const [apiKey] = useState('sk-live-aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890');
+  const [apiKey] = useState(import.meta.env.VITE_API_KEY ?? '');
 
   const { users, auditLog, addUser, updateUser, deleteUser } = useAppStore();
 
   // ── User handlers ──────────────────────────────────────────
   function handleAddUser() {
-    if (!userForm.name || !userForm.email) return;
-    addUser({ name: userForm.name, email: userForm.email, role: userForm.role, password: userForm.password || 'password123' });
+    const errors = validateUserForm(userForm);
+    if (Object.keys(errors).length > 0) {
+      setUserFormErrors(errors);
+      return;
+    }
+    addUser({ name: userForm.name.trim(), email: userForm.email.trim(), role: userForm.role, password: userForm.password });
     setUserForm(emptyUserForm);
+    setUserFormErrors({});
     setShowAddUserModal(false);
   }
 
@@ -544,35 +566,37 @@ export default function AdminPage() {
       {/* Modal: Add user */}
       <Modal
         isOpen={showAddUserModal}
-        onClose={() => { setShowAddUserModal(false); setUserForm(emptyUserForm); }}
+        onClose={() => { setShowAddUserModal(false); setUserForm(emptyUserForm); setUserFormErrors({}); }}
         title="Добавить пользователя"
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setShowAddUserModal(false)}>Отмена</button>
+            <button className="btn-secondary" onClick={() => { setShowAddUserModal(false); setUserFormErrors({}); }}>Отмена</button>
             <button className="btn-primary" onClick={handleAddUser}>Создать</button>
           </>
         }
       >
         <div className="space-y-4">
           <div>
-            <label className="form-label">Имя</label>
+            <label className="form-label">Имя <span className="text-red-500">*</span></label>
             <input
               type="text"
-              className="form-input"
+              className={`form-input${userFormErrors.name ? ' border-red-400 focus:ring-red-400' : ''}`}
               placeholder="Иванов И.И."
               value={userForm.name}
-              onChange={(e) => setUserForm((f) => ({ ...f, name: e.target.value }))}
+              onChange={(e) => { setUserForm((f) => ({ ...f, name: e.target.value })); setUserFormErrors((er) => ({ ...er, name: '' })); }}
             />
+            {userFormErrors.name && <p className="text-red-500 text-xs mt-1">{userFormErrors.name}</p>}
           </div>
           <div>
-            <label className="form-label">Email</label>
+            <label className="form-label">Email <span className="text-red-500">*</span></label>
             <input
               type="email"
-              className="form-input"
+              className={`form-input${userFormErrors.email ? ' border-red-400 focus:ring-red-400' : ''}`}
               placeholder="user@company.ru"
               value={userForm.email}
-              onChange={(e) => setUserForm((f) => ({ ...f, email: e.target.value }))}
+              onChange={(e) => { setUserForm((f) => ({ ...f, email: e.target.value })); setUserFormErrors((er) => ({ ...er, email: '' })); }}
             />
+            {userFormErrors.email && <p className="text-red-500 text-xs mt-1">{userFormErrors.email}</p>}
           </div>
           <div>
             <label className="form-label">Роль</label>
@@ -587,14 +611,15 @@ export default function AdminPage() {
             </select>
           </div>
           <div>
-            <label className="form-label">Пароль</label>
+            <label className="form-label">Пароль <span className="text-red-500">*</span></label>
             <input
               type="password"
-              className="form-input"
+              className={`form-input${userFormErrors.password ? ' border-red-400 focus:ring-red-400' : ''}`}
               placeholder="Минимум 8 символов"
               value={userForm.password}
-              onChange={(e) => setUserForm((f) => ({ ...f, password: e.target.value }))}
+              onChange={(e) => { setUserForm((f) => ({ ...f, password: e.target.value })); setUserFormErrors((er) => ({ ...er, password: '' })); }}
             />
+            {userFormErrors.password && <p className="text-red-500 text-xs mt-1">{userFormErrors.password}</p>}
           </div>
         </div>
       </Modal>

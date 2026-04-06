@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Building2, Lock, User, ShieldCheck, Smartphone, Eye, EyeOff } from 'lucide-react';
 import useAppStore from '../store/appStore';
 import { authApi } from '../services/api';
-import { ROLE_LABELS } from '../data/mockData';
 
 // Steps: 'login' | 'mfa' | 'mfa_setup'
 export default function LoginPage() {
@@ -20,22 +19,11 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Demo accounts for quick login
-  const demoAccounts = [
-    { email: 'admin@furniture.ru', role: 'admin', name: 'Иванов А.С.' },
-    { email: 'sales@furniture.ru', role: 'sales_manager', name: 'Петрова М.В.' },
-    { email: 'accountant@furniture.ru', role: 'accountant', name: 'Сидоров П.К.' },
-    { email: 'prod@furniture.ru', role: 'production_specialist', name: 'Козлов Д.В.' },
-    { email: 'prodhead@furniture.ru', role: 'production_head', name: 'Новиков А.И.' },
-    { email: 'analyst@furniture.ru', role: 'analyst', name: 'Морозова Е.А.' },
-    { email: 'director@furniture.ru', role: 'director', name: 'Волков С.Р.' },
-    { email: 'guest@furniture.ru', role: 'guest', name: 'Гость' },
-  ];
 
-  const handleLogin = async (e, quickEmail) => {
-    if (e) e.preventDefault();
-    const loginEmail = quickEmail || email;
-    const loginPassword = quickEmail ? 'password123' : password;
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    const loginEmail = email;
+    const loginPassword = password;
 
     setError('');
     setLoading(true);
@@ -152,28 +140,6 @@ export default function LoginPage() {
                 </button>
               </form>
 
-              {/* Demo quick login */}
-              <div className="mt-6 pt-6 border-t border-gray-100">
-                <p className="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wide">Демо-доступ (пароль: password123)</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {demoAccounts.map(u => (
-                    <button
-                      key={u.email}
-                      onClick={() => handleLogin(null, u.email)}
-                      disabled={loading}
-                      className="text-left p-2 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors disabled:opacity-50"
-                    >
-                      <div className="text-xs font-medium text-gray-800 truncate">{u.name}</div>
-                      <div className="text-xs text-gray-500">{ROLE_LABELS[u.role]}</div>
-                      {(u.role === 'director' || u.role === 'accountant') && (
-                        <div className="text-xs text-blue-500 mt-0.5 flex items-center gap-1">
-                          <ShieldCheck className="w-3 h-3" />MFA
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </>
           )}
 

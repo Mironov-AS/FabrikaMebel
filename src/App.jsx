@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import useAppStore from './store/appStore';
 import LoginPage from './pages/LoginPage';
 import Layout from './components/layout/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
 import Dashboard from './pages/Dashboard';
 import ContractsList from './pages/contracts/ContractsList';
 import ContractDetail from './pages/contracts/ContractDetail';
@@ -65,21 +66,23 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Layout>
-                <Routes>
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/contracts" element={<ContractsList />} />
-                  <Route path="/contracts/:contractId" element={<ContractDetail />} />
-                  <Route path="/orders" element={<OrdersList />} />
-                  <Route path="/orders/:orderId" element={<OrderDetail />} />
-                  <Route path="/production" element={<ProductionPage />} />
-                  <Route path="/shipments" element={<ShipmentsPage />} />
-                  <Route path="/payments" element={<PaymentsPage />} />
-                  <Route path="/claims" element={<ClaimsPage />} />
-                  <Route path="/reports" element={<ReportsPage />} />
-                  <Route path="/chat" element={<ChatPage />} />
-                  <Route path="/admin" element={<AdminPage />} />
-                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
-                </Routes>
+                <ErrorBoundary title="Ошибка загрузки страницы">
+                  <Routes>
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/contracts" element={<ContractsList />} />
+                    <Route path="/contracts/:contractId" element={<ContractDetail />} />
+                    <Route path="/orders" element={<OrdersList />} />
+                    <Route path="/orders/:orderId" element={<OrderDetail />} />
+                    <Route path="/production" element={<ProductionPage />} />
+                    <Route path="/shipments" element={<ShipmentsPage />} />
+                    <Route path="/payments" element={<PaymentsPage />} />
+                    <Route path="/claims" element={<ClaimsPage />} />
+                    <Route path="/reports" element={<ReportsPage />} />
+                    <Route path="/chat" element={<ChatPage />} />
+                    <Route path="/admin" element={<AdminPage />} />
+                    <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                  </Routes>
+                </ErrorBoundary>
               </Layout>
             </ProtectedRoute>
           }

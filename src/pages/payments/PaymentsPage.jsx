@@ -6,7 +6,7 @@ import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 import StatCard from '../../components/ui/StatCard';
 
-const TODAY = new Date(2026, 3, 6);
+const TODAY = new Date();
 
 function daysDiff(dateStr) {
   const d = new Date(dateStr);
@@ -22,6 +22,7 @@ const emptyPaymentForm = {
 export default function PaymentsPage() {
   const [paymentModal, setPaymentModal] = useState(null);
   const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
+  const [paymentFormErrors, setPaymentFormErrors] = useState({});
 
   const { payments, counterparties, registerPayment } = useAppStore();
 
@@ -51,14 +52,28 @@ export default function PaymentsPage() {
   };
 
   function handlePaymentSubmit() {
-    if (!paymentModal || !paymentForm.amount) return;
+    if (!paymentModal) return;
+    const errors = {};
+    if (!paymentForm.amount) {
+      errors.amount = 'Введите сумму';
+    } else if (Number(paymentForm.amount) <= 0) {
+      errors.amount = 'Сумма должна быть больше нуля';
+    }
+    if (!paymentForm.date) {
+      errors.date = 'Укажите дату оплаты';
+    }
+    if (Object.keys(errors).length > 0) {
+      setPaymentFormErrors(errors);
+      return;
+    }
     registerPayment(
       paymentModal.id,
       Number(paymentForm.amount),
-      paymentForm.date || new Date().toISOString().slice(0, 10),
+      paymentForm.date,
     );
     setPaymentModal(null);
     setPaymentForm(emptyPaymentForm);
+    setPaymentFormErrors({});
   }
 
   return (
@@ -159,7 +174,8 @@ export default function PaymentsPage() {
                             className="btn-secondary text-xs py-1 px-2"
                             onClick={() => {
                               setPaymentModal(p);
-                              setPaymentForm({ ...emptyPaymentForm, amount: String(p.amount) });
+                              setPaymentForm({ ...emptyPaymentForm, amount: String(p.amount), date: new Date().toISOString().slice(0, 10) });
+                              setPaymentFormErrors({});
                             }}
                           >
                             Зарегистрировать оплату
@@ -181,11 +197,12 @@ export default function PaymentsPage() {
         onClose={() => {
           setPaymentModal(null);
           setPaymentForm(emptyPaymentForm);
+          setPaymentFormErrors({});
         }}
         title="Зарегистрировать оплату"
         footer={
           <>
-            <button className="btn-secondary" onClick={() => setPaymentModal(null)}>
+            <button className="btn-secondary" onClick={() => { setPaymentModal(null); setPaymentFormErrors({}); }}>
               Отмена
             </button>
             <button className="btn-primary" onClick={handlePaymentSubmit}>
@@ -210,22 +227,25 @@ export default function PaymentsPage() {
               )}
             </div>
             <div>
-              <label className="form-label">Сумма оплаты (₽)</label>
+              <label className="form-label">Сумма оплаты (₽) <span className="text-red-500">*</span></label>
               <input
                 type="number"
-                className="form-input"
+                className={`form-input${paymentFormErrors.amount ? ' border-red-400 focus:ring-red-400' : ''}`}
                 value={paymentForm.amount}
-                onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
+                min={1}
+                onChange={(e) => { setPaymentForm((f) => ({ ...f, amount: e.target.value })); setPaymentFormErrors((er) => ({ ...er, amount: '' })); }}
               />
+              {paymentFormErrors.amount && <p className="text-red-500 text-xs mt-1">{paymentFormErrors.amount}</p>}
             </div>
             <div>
-              <label className="form-label">Дата оплаты</label>
+              <label className="form-label">Дата оплаты <span className="text-red-500">*</span></label>
               <input
                 type="date"
-                className="form-input"
+                className={`form-input${paymentFormErrors.date ? ' border-red-400 focus:ring-red-400' : ''}`}
                 value={paymentForm.date}
-                onChange={(e) => setPaymentForm((f) => ({ ...f, date: e.target.value }))}
+                onChange={(e) => { setPaymentForm((f) => ({ ...f, date: e.target.value })); setPaymentFormErrors((er) => ({ ...er, date: '' })); }}
               />
+              {paymentFormErrors.date && <p className="text-red-500 text-xs mt-1">{paymentFormErrors.date}</p>}
             </div>
             <div>
               <label className="form-label">Примечание</label>

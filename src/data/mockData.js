@@ -1,6 +1,6 @@
 import { addDays, subDays, format } from 'date-fns';
 
-const today = new Date(2026, 3, 6); // April 6, 2026
+const today = new Date();
 
 export const ROLES = {
   ADMIN: 'admin',
