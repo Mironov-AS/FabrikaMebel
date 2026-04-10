@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Bell, X, LogOut, User } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { Bell, X } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 
 const ROUTE_TITLES = {
@@ -30,15 +30,9 @@ function formatDate(date) {
 }
 
 export default function Header() {
-  const { notifications, markAllRead, logout, currentUser } = useAppStore();
+  const { notifications, markAllRead } = useAppStore();
   const location = useLocation();
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-
-  async function handleLogout() {
-    await logout();
-    navigate('/login', { replace: true });
-  }
 
   const unread = notifications.filter((n) => !n.read).length;
   const title = getTitle(location.pathname);
@@ -56,23 +50,6 @@ export default function Header() {
         <span className="text-sm text-gray-400 capitalize hidden sm:block">
           {formatDate(new Date())}
         </span>
-
-        {/* Current user */}
-        {currentUser && (
-          <div className="hidden sm:flex items-center gap-2 text-sm text-gray-600">
-            <User size={15} className="text-gray-400" />
-            <span className="font-medium">{currentUser.name}</span>
-          </div>
-        )}
-
-        {/* Logout */}
-        <button
-          onClick={handleLogout}
-          title="Выйти"
-          className="p-2 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-        >
-          <LogOut size={18} />
-        </button>
 
         {/* Notification bell */}
         <div className="relative">

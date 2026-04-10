@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import useAppStore from './store/appStore';
 import HomePage from './pages/HomePage';
-import LoginPage from './pages/LoginPage';
 import Layout from './components/layout/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import Dashboard from './pages/Dashboard';
@@ -18,16 +17,12 @@ import ReportsPage from './pages/reports/ReportsPage';
 import ChatPage from './pages/chat/ChatPage';
 import AdminPage from './pages/admin/AdminPage';
 
-function ProtectedRoutes() {
-  const { isAuthenticated, loadAll } = useAppStore();
+function AppRoutes() {
+  const loadAll = useAppStore(s => s.loadAll);
 
   useEffect(() => {
-    if (isAuthenticated) loadAll();
-  }, [isAuthenticated]);
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
+    loadAll();
+  }, []);
 
   return (
     <Layout>
@@ -56,16 +51,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<ProtectedHomePage />} />
-        <Route path="/*" element={<ProtectedRoutes />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/*" element={<AppRoutes />} />
       </Routes>
     </BrowserRouter>
   );
-}
-
-function ProtectedHomePage() {
-  const isAuthenticated = useAppStore(s => s.isAuthenticated);
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return <HomePage />;
 }
