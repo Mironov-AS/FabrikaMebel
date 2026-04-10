@@ -2,6 +2,7 @@ import {
   TrendingUp, Factory, Package, Truck,
   CreditCard, BarChart3, Settings, AlertCircle,
   LayoutDashboard, FileText, ShoppingCart, MessageSquare,
+  ClipboardList,
 } from 'lucide-react';
 
 export const ALL_NAV_ITEMS = [
@@ -27,9 +28,22 @@ export const SERVICES = [
     lightBg: 'bg-blue-50',
     textColor: 'text-blue-700',
     borderColor: 'border-blue-200',
-    description: 'Договоры, заказы, чат с клиентами, рекламации',
-    navPaths: ['/contracts', '/orders', '/chat', '/claims'],
+    description: 'Договоры, заказы и чат с клиентами',
+    navPaths: ['/contracts', '/orders', '/chat'],
     defaultPath: '/contracts',
+  },
+  {
+    id: 'claims',
+    name: 'Рекламации',
+    icon: ClipboardList,
+    colorClass: 'bg-red-500',
+    gradientClass: 'from-red-500 to-red-700',
+    lightBg: 'bg-red-50',
+    textColor: 'text-red-700',
+    borderColor: 'border-red-200',
+    description: 'Учёт и обработка рекламаций по договорам',
+    navPaths: ['/claims'],
+    defaultPath: '/claims',
   },
   {
     id: 'production',
