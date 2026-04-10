@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { SERVICES } from '../data/services';
@@ -6,6 +7,11 @@ import useAppStore from '../store/appStore';
 export default function HomePage() {
   const navigate = useNavigate();
   const setService = useAppStore(s => s.setService);
+  const clearService = useAppStore(s => s.clearService);
+
+  useEffect(() => {
+    clearService();
+  }, []);
 
   function handleSelect(service) {
     setService(service.id);
