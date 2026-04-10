@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useEffect } from 'react';
 import useAppStore from './store/appStore';
 import HomePage from './pages/HomePage';
@@ -18,7 +18,7 @@ import ChatPage from './pages/chat/ChatPage';
 import AdminPage from './pages/admin/AdminPage';
 import CounterpartiesPage from './pages/counterparties/CounterpartiesPage';
 
-function AppRoutes() {
+function LayoutWrapper() {
   const loadAll = useAppStore(s => s.loadAll);
 
   useEffect(() => {
@@ -28,7 +28,18 @@ function AppRoutes() {
   return (
     <Layout>
       <ErrorBoundary title="Ошибка загрузки страницы">
-        <Routes>
+        <Outlet />
+      </ErrorBoundary>
+    </Layout>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route element={<LayoutWrapper />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/contracts" element={<ContractsList />} />
           <Route path="/contracts/:contractId" element={<ContractDetail />} />
@@ -43,18 +54,7 @@ function AppRoutes() {
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </ErrorBoundary>
-    </Layout>
-  );
-}
-
-export default function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/*" element={<AppRoutes />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   );
