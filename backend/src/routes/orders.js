@@ -1,6 +1,21 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole, logAudit } = require('../middleware/auth');
+const { sanitizeStr, checkLengths } = require('../middleware/validate');
+
+const VALID_ORDER_STATUSES = ['planned', 'in_production', 'ready_for_shipment', 'shipped', 'completed'];
+
+function validateItems(specification) {
+  for (const item of specification) {
+    if (item.quantity !== undefined && item.quantity <= 0) {
+      return 'Количество должно быть положительным числом';
+    }
+    if (item.price !== undefined && item.price < 0) {
+      return 'Цена не может быть отрицательной';
+    }
+  }
+  return null;
+}
 
 const router = express.Router();
 router.use(authenticate);
@@ -45,13 +60,24 @@ router.post('/', requireRole('admin', 'sales_manager', 'director'), (req, res) =
   const { number, contractId, counterpartyId, date, shipmentDeadline, priority, status, totalAmount, notes, specification = [] } = req.body;
   if (!number) return res.status(400).json({ error: 'Номер заказа обязателен' });
 
+  if (status !== undefined && !VALID_ORDER_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `Недопустимый статус. Допустимые значения: ${VALID_ORDER_STATUSES.join(', ')}` });
+  }
+
+  const itemsErr = validateItems(specification);
+  if (itemsErr) return res.status(400).json({ error: itemsErr });
+
+  const safeNumber = sanitizeStr(number);
+  const lenErr = checkLengths({ 'Номер заказа': safeNumber, ...(notes ? { 'Примечания': sanitizeStr(notes) } : {}) }, 500);
+  if (lenErr) return res.status(400).json({ error: lenErr });
+
   const computedTotal = specification.reduce((sum, item) => sum + (item.quantity || 0) * (item.price || 0), 0);
   const resolvedTotal = computedTotal > 0 ? computedTotal : (totalAmount || 0);
 
   const result = db.prepare(`
     INSERT INTO orders (number, contract_id, counterparty_id, date, shipment_deadline, priority, status, total_amount, notes, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(number, contractId || null, counterpartyId || null, date, shipmentDeadline, priority || 'medium', status || 'planned', resolvedTotal, notes || null, req.user.id);
+  `).run(safeNumber, contractId || null, counterpartyId || null, date, shipmentDeadline, priority || 'medium', status || 'planned', resolvedTotal, notes ? sanitizeStr(notes) : null, req.user.id);
 
   const orderId = result.lastInsertRowid;
   for (const item of specification) {
@@ -98,6 +124,17 @@ router.put('/:id', requireRole('admin', 'sales_manager', 'director', 'production
 
   const { number, contractId, counterpartyId, date, shipmentDeadline, priority, status, totalAmount, notes, specification } = req.body;
 
+  if (status !== undefined && !VALID_ORDER_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `Недопустимый статус. Допустимые значения: ${VALID_ORDER_STATUSES.join(', ')}` });
+  }
+
+  if (specification !== undefined) {
+    const itemsErr = validateItems(specification);
+    if (itemsErr) return res.status(400).json({ error: itemsErr });
+  }
+
+  const safeNumber = number !== undefined ? sanitizeStr(number) : undefined;
+
   db.prepare(`
     UPDATE orders SET
       number = COALESCE(?, number),
@@ -110,7 +147,7 @@ router.put('/:id', requireRole('admin', 'sales_manager', 'director', 'production
       total_amount = COALESCE(?, total_amount),
       notes = COALESCE(?, notes)
     WHERE id = ?
-  `).run(number, contractId, counterpartyId, date, shipmentDeadline, priority, status, totalAmount, notes, req.params.id);
+  `).run(safeNumber, contractId, counterpartyId, date, shipmentDeadline, priority, status, totalAmount, notes !== undefined ? sanitizeStr(notes) : undefined, req.params.id);
 
   if (specification !== undefined) {
     db.prepare('DELETE FROM order_items WHERE order_id = ?').run(req.params.id);

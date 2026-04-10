@@ -1,6 +1,9 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole, logAudit } = require('../middleware/auth');
+const { sanitizeStr, checkLengths } = require('../middleware/validate');
+
+const VALID_CONTRACT_STATUSES = ['draft', 'active', 'suspended', 'completed'];
 
 const router = express.Router();
 
@@ -47,14 +50,27 @@ router.post('/', requireRole('admin', 'sales_manager', 'director'), (req, res) =
   } = req.body;
 
   if (!number) return res.status(400).json({ error: 'Номер договора обязателен' });
+  if (!counterpartyId) return res.status(400).json({ error: 'Контрагент обязателен' });
+  if (!date) return res.status(400).json({ error: 'Дата договора обязательна' });
+  if (!subject) return res.status(400).json({ error: 'Предмет договора обязателен' });
 
-  const existing = db.prepare('SELECT id FROM contracts WHERE number = ?').get(number);
+  if (status !== undefined && !VALID_CONTRACT_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `Недопустимый статус. Допустимые значения: ${VALID_CONTRACT_STATUSES.join(', ')}` });
+  }
+
+  const safeNumber = sanitizeStr(number);
+  const safeSubject = sanitizeStr(subject);
+
+  const lenErr = checkLengths({ 'Номер договора': safeNumber, 'Предмет договора': safeSubject }, 500);
+  if (lenErr) return res.status(400).json({ error: lenErr });
+
+  const existing = db.prepare('SELECT id FROM contracts WHERE number = ?').get(safeNumber);
   if (existing) return res.status(409).json({ error: 'Договор с таким номером уже существует' });
 
   const result = db.prepare(`
     INSERT INTO contracts (number, counterparty_id, date, valid_until, status, amount, subject, payment_delay, penalty_rate, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(number, counterpartyId || null, date, validUntil, status || 'draft', amount || 0, subject, paymentDelay || 30, penaltyRate || 0.1, req.user.id);
+  `).run(safeNumber, counterpartyId, date, validUntil, status || 'draft', amount || 0, safeSubject, paymentDelay || 30, penaltyRate || 0.1, req.user.id);
 
   const contractId = result.lastInsertRowid;
 
@@ -85,6 +101,19 @@ router.put('/:id', requireRole('admin', 'sales_manager', 'director'), (req, res)
     paymentDelay, penaltyRate, conditions, obligations, changeDescription,
   } = req.body;
 
+  if (status !== undefined && !VALID_CONTRACT_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `Недопустимый статус. Допустимые значения: ${VALID_CONTRACT_STATUSES.join(', ')}` });
+  }
+
+  const safeNumber = number !== undefined ? sanitizeStr(number) : undefined;
+  const safeSubject = subject !== undefined ? sanitizeStr(subject) : undefined;
+
+  const lenErr = checkLengths({
+    ...(safeNumber !== undefined ? { 'Номер договора': safeNumber } : {}),
+    ...(safeSubject !== undefined ? { 'Предмет договора': safeSubject } : {}),
+  }, 500);
+  if (lenErr) return res.status(400).json({ error: lenErr });
+
   db.prepare(`
     UPDATE contracts SET
       number = COALESCE(?, number),
@@ -98,7 +127,7 @@ router.put('/:id', requireRole('admin', 'sales_manager', 'director'), (req, res)
       penalty_rate = COALESCE(?, penalty_rate),
       updated_at = datetime('now')
     WHERE id = ?
-  `).run(number, counterpartyId, date, validUntil, status, amount, subject, paymentDelay, penaltyRate, req.params.id);
+  `).run(safeNumber, counterpartyId, date, validUntil, status, amount, safeSubject, paymentDelay, penaltyRate, req.params.id);
 
   // Update conditions if provided
   if (conditions !== undefined) {

@@ -1,6 +1,9 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole, logAudit } = require('../middleware/auth');
+const { clamp } = require('../middleware/validate');
+
+const VALID_TASK_STATUSES = ['planned', 'in_progress', 'done'];
 
 const router = express.Router();
 router.use(authenticate);
@@ -41,10 +44,16 @@ router.post('/tasks', requireRole('admin', 'production_head', 'director'), (req,
   const { orderId, orderNumber, name, lineId, start, end, progress, status, responsible, priority, color } = req.body;
   if (!name) return res.status(400).json({ error: 'Название задачи обязательно' });
 
+  if (status !== undefined && !VALID_TASK_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `Недопустимый статус. Допустимые значения: ${VALID_TASK_STATUSES.join(', ')}` });
+  }
+
+  const safeProgress = clamp(progress ?? 0, 0, 100);
+
   const result = db.prepare(`
     INSERT INTO production_tasks (order_id, order_number, name, line_id, start_date, end_date, progress, status, responsible, priority, color)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(orderId || null, orderNumber || null, name, lineId || null, start, end, progress || 0, status || 'planned', responsible || null, priority || 'medium', color || '#3b82f6');
+  `).run(orderId || null, orderNumber || null, name, lineId || null, start, end, safeProgress, status || 'planned', responsible || null, priority || 'medium', color || '#3b82f6');
 
   logAudit(req.user.id, req.user.name, `Создана производственная задача: ${name}`, 'Производство', result.lastInsertRowid, req.ip);
   res.status(201).json(buildTask(db.prepare('SELECT * FROM production_tasks WHERE id = ?').get(result.lastInsertRowid)));
@@ -56,6 +65,12 @@ router.put('/tasks/:id', requireRole('admin', 'production_head', 'production_spe
   if (!task) return res.status(404).json({ error: 'Задача не найдена' });
 
   const { name, lineId, start, end, progress, status, responsible, priority, color } = req.body;
+
+  if (status !== undefined && !VALID_TASK_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `Недопустимый статус. Допустимые значения: ${VALID_TASK_STATUSES.join(', ')}` });
+  }
+
+  const safeProgress = progress !== undefined ? clamp(progress, 0, 100) : undefined;
 
   db.prepare(`
     UPDATE production_tasks SET
@@ -69,7 +84,7 @@ router.put('/tasks/:id', requireRole('admin', 'production_head', 'production_spe
       priority = COALESCE(?, priority),
       color = COALESCE(?, color)
     WHERE id = ?
-  `).run(name, lineId, start, end, progress, status, responsible, priority, color, req.params.id);
+  `).run(name, lineId, start, end, safeProgress, status, responsible, priority, color, req.params.id);
 
   logAudit(req.user.id, req.user.name, `Обновлена задача производства: ${task.name}`, 'Производство', task.id, req.ip);
   res.json(buildTask(db.prepare('SELECT * FROM production_tasks WHERE id = ?').get(req.params.id)));

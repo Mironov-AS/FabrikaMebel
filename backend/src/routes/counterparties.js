@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole, logAudit } = require('../middleware/auth');
+const { sanitizeStr, checkLengths } = require('../middleware/validate');
 
 const router = express.Router();
 router.use(authenticate);
@@ -23,10 +24,14 @@ router.post('/', requireRole('admin', 'sales_manager', 'director'), (req, res) =
   const { name, inn, kpp, address, delivery_address, contact, phone, email, priority } = req.body;
   if (!name) return res.status(400).json({ error: 'Название обязательно' });
 
+  const safeName = sanitizeStr(name);
+  const lenErr = checkLengths({ 'Название': safeName, ...(address ? { 'Адрес': sanitizeStr(address) } : {}) }, 255);
+  if (lenErr) return res.status(400).json({ error: lenErr });
+
   const result = db.prepare(`
     INSERT INTO counterparties (name, inn, kpp, address, delivery_address, contact, phone, email, priority)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(name, inn || null, kpp || null, address || null, delivery_address || null, contact || null, phone || null, email || null, priority || 'medium');
+  `).run(safeName, inn || null, kpp || null, address ? sanitizeStr(address) : null, delivery_address ? sanitizeStr(delivery_address) : null, contact ? sanitizeStr(contact) : null, phone || null, email || null, priority || 'medium');
 
   logAudit(req.user.id, req.user.name, `Создан контрагент ${name}`, 'Контрагент', result.lastInsertRowid, req.ip);
   res.status(201).json(db.prepare('SELECT * FROM counterparties WHERE id = ?').get(result.lastInsertRowid));

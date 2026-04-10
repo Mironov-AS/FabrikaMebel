@@ -1,6 +1,9 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole, logAudit } = require('../middleware/auth');
+const { sanitizeStr } = require('../middleware/validate');
+
+const VALID_CLAIM_STATUSES = ['open', 'in_review', 'resolved', 'closed'];
 
 const router = express.Router();
 router.use(authenticate);
@@ -46,7 +49,7 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
   const result = db.prepare(`
     INSERT INTO claims (number, contract_id, shipment_id, counterparty_id, order_item_id, date, deadline, description, status, responsible, pause_payments, affected_payment_id, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)
-  `).run(number, contractId || null, shipmentId || null, counterpartyId || null, specItemId || null, date, deadline || null, description, responsible || null, pausePayments ? 1 : 0, affectedPaymentId || null, req.user.id);
+  `).run(sanitizeStr(number), contractId || null, shipmentId || null, counterpartyId || null, specItemId || null, date, deadline || null, description ? sanitizeStr(description) : null, responsible || null, pausePayments ? 1 : 0, affectedPaymentId || null, req.user.id);
 
   logAudit(req.user.id, req.user.name, `Создана рекламация ${number}`, 'Рекламация', result.lastInsertRowid, req.ip);
   res.status(201).json(buildClaim(db.prepare('SELECT * FROM claims WHERE id = ?').get(result.lastInsertRowid)));
@@ -59,6 +62,10 @@ router.put('/:id', requireRole('admin', 'sales_manager', 'director', 'production
 
   const { status, resolution, responsible, pausePayments, deadline } = req.body;
 
+  if (status !== undefined && !VALID_CLAIM_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `Недопустимый статус. Допустимые значения: ${VALID_CLAIM_STATUSES.join(', ')}` });
+  }
+
   db.prepare(`
     UPDATE claims SET
       status = COALESCE(?, status),
@@ -67,7 +74,7 @@ router.put('/:id', requireRole('admin', 'sales_manager', 'director', 'production
       pause_payments = COALESCE(?, pause_payments),
       deadline = COALESCE(?, deadline)
     WHERE id = ?
-  `).run(status, resolution, responsible, pausePayments !== undefined ? (pausePayments ? 1 : 0) : null, deadline, req.params.id);
+  `).run(status, resolution ? sanitizeStr(resolution) : resolution, responsible, pausePayments !== undefined ? (pausePayments ? 1 : 0) : null, deadline, req.params.id);
 
   logAudit(req.user.id, req.user.name, `Обновлена рекламация ${claim.number}`, 'Рекламация', claim.id, req.ip);
   res.json(buildClaim(db.prepare('SELECT * FROM claims WHERE id = ?').get(req.params.id)));
