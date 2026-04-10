@@ -3,12 +3,17 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
-const DB_PATH = path.resolve(__dirname, '..', process.env.DB_PATH || './data/database.sqlite');
+const isTest = process.env.NODE_ENV === 'test';
+const DB_PATH = isTest
+  ? ':memory:'
+  : path.resolve(__dirname, '..', process.env.DB_PATH || './data/database.sqlite');
 
-// Ensure data directory exists
-const dataDir = path.dirname(DB_PATH);
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+// Ensure data directory exists (skip for in-memory)
+if (!isTest) {
+  const dataDir = path.dirname(DB_PATH);
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
 }
 
 const db = new Database(DB_PATH);
