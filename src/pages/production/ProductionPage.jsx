@@ -1,16 +1,10 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  addDays, startOfWeek, endOfWeek, eachDayOfInterval, format,
-  isToday, parseISO, differenceInDays, startOfMonth, endOfMonth,
-  addWeeks, addMonths,
-} from 'date-fns';
-import { ru } from 'date-fns/locale';
-import {
-  ChevronLeft, ChevronRight, CheckCircle2, PackageCheck,
-  Play, Clock, AlertTriangle, X, SlidersHorizontal,
+  CheckCircle2, PackageCheck,
+  Play, Clock, AlertTriangle, SlidersHorizontal,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
-import { PRODUCTION_LINES, STATUS_LABELS, formatMoney } from '../../data/mockData';
+import { STATUS_LABELS } from '../../data/mockData';
 import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 
@@ -380,239 +374,12 @@ function ReadyForShipmentTab({ orders, contracts, counterparties }) {
   );
 }
 
-// ─── Gantt helpers ────────────────────────────────────────────────────────────
-
-const VIEW_MODES = [
-  { id: 'week',    label: 'Неделя' },
-  { id: 'month',   label: 'Месяц' },
-  { id: 'quarter', label: 'Квартал' },
-];
-
-function getRangeForMode(anchor, mode) {
-  if (mode === 'week') {
-    return { start: startOfWeek(anchor, { weekStartsOn: 1 }), end: endOfWeek(anchor, { weekStartsOn: 1 }) };
-  }
-  if (mode === 'month') {
-    return { start: startOfMonth(anchor), end: endOfMonth(anchor) };
-  }
-  const start = startOfMonth(anchor);
-  return { start, end: endOfMonth(addMonths(anchor, 2)) };
-}
-
-function shiftAnchor(anchor, mode, direction) {
-  if (mode === 'week')  return direction > 0 ? addWeeks(anchor, 1)  : addWeeks(anchor, -1);
-  if (mode === 'month') return direction > 0 ? addMonths(anchor, 1) : addMonths(anchor, -1);
-  return direction > 0 ? addMonths(anchor, 3) : addMonths(anchor, -3);
-}
-
-function getBarPosition(taskStart, taskEnd, rangeStart, rangeEnd) {
-  const totalDays = differenceInDays(rangeEnd, rangeStart) + 1;
-  if (totalDays <= 0) return null;
-  const start = parseISO(taskStart);
-  const end   = parseISO(taskEnd);
-  const clampedStart = start < rangeStart ? rangeStart : start;
-  const clampedEnd   = end   > rangeEnd   ? rangeEnd   : end;
-  if (clampedEnd < rangeStart || clampedStart > rangeEnd) return null;
-  const leftDays  = differenceInDays(clampedStart, rangeStart);
-  const widthDays = differenceInDays(clampedEnd, clampedStart) + 1;
-  return {
-    left:  (leftDays  / totalDays) * 100,
-    width: (widthDays / totalDays) * 100,
-  };
-}
-
-function GanttTab({ tasks }) {
-  const [viewMode, setViewMode] = useState('month');
-  const [anchor,   setAnchor]   = useState(new Date());
-  const [popup,    setPopup]    = useState(null);
-
-  const { start: rangeStart, end: rangeEnd } = getRangeForMode(anchor, viewMode);
-  const days = eachDayOfInterval({ start: rangeStart, end: rangeEnd });
-  const today = new Date();
-
-  const tasksByLine = useMemo(() => {
-    const map = {};
-    PRODUCTION_LINES.forEach(l => { map[l.id] = []; });
-    tasks.forEach(t => { if (map[t.lineId]) map[t.lineId].push(t); });
-    return map;
-  }, [tasks]);
-
-  const todayPos = getBarPosition(
-    format(today, 'yyyy-MM-dd'),
-    format(today, 'yyyy-MM-dd'),
-    rangeStart, rangeEnd
-  );
-
-  const orderColors = useMemo(() => {
-    const seen = {};
-    tasks.forEach(t => { seen[t.orderNumber] = t.color; });
-    return Object.entries(seen);
-  }, [tasks]);
-
-  const LEFT_WIDTH = 180;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-        <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-1">
-          {VIEW_MODES.map(vm => (
-            <button
-              key={vm.id}
-              onClick={() => setViewMode(vm.id)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                viewMode === vm.id ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {vm.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            className="p-1.5 rounded-lg border border-gray-300 hover:bg-gray-50"
-            onClick={() => setAnchor(a => shiftAnchor(a, viewMode, -1))}
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <span className="text-sm font-medium text-gray-700 min-w-[160px] text-center">
-            {format(rangeStart, 'd MMM', { locale: ru })} — {format(rangeEnd, 'd MMM yyyy', { locale: ru })}
-          </span>
-          <button
-            className="p-1.5 rounded-lg border border-gray-300 hover:bg-gray-50"
-            onClick={() => setAnchor(a => shiftAnchor(a, viewMode, 1))}
-          >
-            <ChevronRight size={16} />
-          </button>
-          <button className="btn-secondary text-xs py-1.5 px-3" onClick={() => setAnchor(new Date())}>
-            Сегодня
-          </button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-3">
-        {orderColors.map(([orderNum, color]) => (
-          <div key={orderNum} className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
-            <span className="text-xs text-gray-600">{orderNum}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
-          <div style={{ minWidth: `${LEFT_WIDTH + days.length * 28}px` }}>
-            <div className="flex border-b border-gray-200 bg-gray-50">
-              <div className="flex-shrink-0 px-3 py-2 text-xs font-semibold text-gray-500 border-r border-gray-200" style={{ width: LEFT_WIDTH }}>
-                Линия
-              </div>
-              <div className="flex flex-1">
-                {days.map(d => (
-                  <div
-                    key={d.toISOString()}
-                    className={`flex-shrink-0 text-center border-r border-gray-100 py-2 ${isToday(d) ? 'bg-blue-50' : ''}`}
-                    style={{ width: 28 }}
-                  >
-                    <span className={`text-[10px] font-medium ${isToday(d) ? 'text-blue-600' : 'text-gray-500'}`}>
-                      {format(d, 'd')}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {PRODUCTION_LINES.map(line => {
-              const lineTasks = tasksByLine[line.id] ?? [];
-              return (
-                <div key={line.id} className="flex border-b border-gray-100 last:border-0 group">
-                  <div
-                    className="flex-shrink-0 px-3 py-3 text-xs font-medium text-gray-700 border-r border-gray-200 bg-white group-hover:bg-gray-50 flex items-center"
-                    style={{ width: LEFT_WIDTH }}
-                  >
-                    <span className="truncate">{line.name}</span>
-                  </div>
-                  <div className="flex-1 relative bg-white group-hover:bg-gray-50/50" style={{ height: 44 }}>
-                    <div className="absolute inset-0 flex">
-                      {days.map(d => (
-                        <div
-                          key={d.toISOString()}
-                          className={`flex-shrink-0 h-full border-r border-gray-100 ${isToday(d) ? 'bg-blue-50/40' : ''}`}
-                          style={{ width: 28 }}
-                        />
-                      ))}
-                    </div>
-                    {todayPos && (
-                      <div
-                        className="absolute top-0 bottom-0 w-px bg-blue-400 z-10 opacity-60"
-                        style={{ left: `calc(${todayPos.left}% + ${todayPos.width / 2}%)` }}
-                      />
-                    )}
-                    {lineTasks.map(task => {
-                      const pos = getBarPosition(task.start, task.end, rangeStart, rangeEnd);
-                      if (!pos) return null;
-                      return (
-                        <button
-                          key={task.id}
-                          className="absolute top-2 bottom-2 rounded flex items-center px-1.5 overflow-hidden z-20 cursor-pointer hover:brightness-95 focus:outline-none"
-                          style={{ left: `${pos.left}%`, width: `${pos.width}%`, backgroundColor: task.color, minWidth: '2px' }}
-                          onClick={() => setPopup(task)}
-                          title={task.name}
-                        >
-                          {pos.width > 5 && (
-                            <>
-                              <span className="text-white text-[9px] font-medium truncate flex-1">{task.name}</span>
-                              <span className="text-white/80 text-[9px] ml-1 flex-shrink-0">{task.progress}%</span>
-                            </>
-                          )}
-                          <div className="absolute inset-0 left-0 rounded opacity-30 bg-white" style={{ width: `${task.progress}%` }} />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {popup && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center" onClick={() => setPopup(null)}>
-          <div className="absolute inset-0 bg-black/20" />
-          <div className="relative z-10 bg-white rounded-xl shadow-xl p-5 w-72 space-y-3" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-sm font-semibold text-gray-900">{popup.name}</p>
-              <button onClick={() => setPopup(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
-            </div>
-            <div className="space-y-1.5 text-xs text-gray-600">
-              <p><span className="text-gray-400">Заказ:</span> {popup.orderNumber}</p>
-              <p><span className="text-gray-400">Начало:</span> {popup.start}</p>
-              <p><span className="text-gray-400">Конец:</span> {popup.end}</p>
-              <p><span className="text-gray-400">Ответственный:</span> {popup.responsible}</p>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-500">Прогресс</span>
-                <span className="text-xs font-semibold text-gray-800">{popup.progress}%</span>
-              </div>
-              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${popup.progress}%`, backgroundColor: popup.color }} />
-              </div>
-            </div>
-            <StatusBadge status={popup.status} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ProductionPage() {
   const orders         = useAppStore(s => s.orders);
   const contracts      = useAppStore(s => s.contracts);
   const counterparties = useAppStore(s => s.counterparties);
-  const tasks          = useAppStore(s => s.productionTasks);
   const markOrderReadyForShipment = useAppStore(s => s.markOrderReadyForShipment);
   const sendOrderToProduction     = useAppStore(s => s.sendOrderToProduction);
   const updateOrderItemStatus     = useAppStore(s => s.updateOrderItemStatus);
@@ -627,7 +394,6 @@ export default function ProductionPage() {
     { id: 'queue',   label: 'Очередь производства', count: queueOrders.length },
     { id: 'inprod',  label: 'В производстве',        count: inProdOrders.length },
     { id: 'ready',   label: 'Готово к отгрузке',     count: readyOrders.length },
-    { id: 'gantt',   label: 'Диаграмма Ганта' },
   ];
 
   const handleSendToProduction = async (orderId) => {
@@ -719,8 +485,6 @@ export default function ProductionPage() {
             counterparties={counterparties}
           />
         )}
-
-        {activeTab === 'gantt' && <GanttTab tasks={tasks} />}
       </div>
     </div>
   );
