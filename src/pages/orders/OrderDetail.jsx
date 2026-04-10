@@ -40,7 +40,7 @@ function Tab({ label, active, onClick }) {
 
 // ─── Specification Tab ────────────────────────────────────────────────────────
 
-function SpecificationTab({ order, onCreateShipment }) {
+function SpecificationTab({ order, onCreateShipment, isWarehouse }) {
   const spec = order.specification ?? [];
 
   const totalQty      = spec.reduce((s, i) => s + i.quantity, 0);
@@ -70,12 +70,15 @@ function SpecificationTab({ order, onCreateShipment }) {
         );
       },
     },
-    { key: 'price',  label: 'Цена',  render: (val) => formatMoney(val) },
-    {
-      key: 'price',
-      label: 'Сумма',
-      render: (val, row) => formatMoney(row.quantity * val),
-    },
+    // Price and Amount columns hidden for warehouse
+    ...(!isWarehouse ? [
+      { key: 'price',  label: 'Цена',  render: (val) => formatMoney(val) },
+      {
+        key: 'price',
+        label: 'Сумма',
+        render: (val, row) => formatMoney(row.quantity * val),
+      },
+    ] : []),
     {
       key: 'status',
       label: 'Статус',
@@ -103,7 +106,7 @@ function SpecificationTab({ order, onCreateShipment }) {
       {/* Totals row */}
       {spec.length > 0 && (
         <div className="card p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className={`grid grid-cols-2 ${!isWarehouse ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-4`}>
             <div>
               <p className="text-xs text-gray-500 mb-0.5">Итого позиций</p>
               <p className="text-sm font-semibold text-gray-900">{totalQty} шт.</p>
@@ -118,23 +121,27 @@ function SpecificationTab({ order, onCreateShipment }) {
                 {totalRemainder} шт.
               </p>
             </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-0.5">Сумма договора</p>
-              <p className="text-sm font-semibold text-gray-900">{formatMoney(totalAmount)}</p>
-            </div>
+            {!isWarehouse && (
+              <div>
+                <p className="text-xs text-gray-500 mb-0.5">Сумма договора</p>
+                <p className="text-sm font-semibold text-gray-900">{formatMoney(totalAmount)}</p>
+              </div>
+            )}
           </div>
-          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-6">
-            <div>
-              <p className="text-xs text-gray-500 mb-0.5">Сумма отгружено</p>
-              <p className="text-sm font-semibold text-blue-700">{formatMoney(totalShippedAmount)}</p>
+          {!isWarehouse && (
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-6">
+              <div>
+                <p className="text-xs text-gray-500 mb-0.5">Сумма отгружено</p>
+                <p className="text-sm font-semibold text-blue-700">{formatMoney(totalShippedAmount)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-0.5">Остаток к отгрузке</p>
+                <p className="text-sm font-semibold text-orange-600">
+                  {formatMoney(totalAmount - totalShippedAmount)}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-0.5">Остаток к отгрузке</p>
-              <p className="text-sm font-semibold text-orange-600">
-                {formatMoney(totalAmount - totalShippedAmount)}
-              </p>
-            </div>
-          </div>
+          )}
         </div>
       )}
     </div>
@@ -143,7 +150,7 @@ function SpecificationTab({ order, onCreateShipment }) {
 
 // ─── Packing List Tab ─────────────────────────────────────────────────────────
 
-function PackingListTab({ order, contract, counterparty }) {
+function PackingListTab({ order, contract, counterparty, isWarehouse }) {
   const spec = order.specification ?? [];
   const totalQty = spec.reduce((s, i) => s + i.quantity, 0);
   const totalAmount = spec.reduce((s, i) => s + i.quantity * i.price, 0);
@@ -199,12 +206,16 @@ function PackingListTab({ order, contract, counterparty }) {
                 <th className="px-3 py-2 text-center text-xs font-semibold text-gray-600 border border-gray-200">
                   Кол-во
                 </th>
-                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 border border-gray-200">
-                  Цена
-                </th>
-                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 border border-gray-200">
-                  Сумма
-                </th>
+                {!isWarehouse && (
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 border border-gray-200">
+                    Цена
+                  </th>
+                )}
+                {!isWarehouse && (
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600 border border-gray-200">
+                    Сумма
+                  </th>
+                )}
                 <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 border border-gray-200">
                   Статус
                 </th>
@@ -225,12 +236,16 @@ function PackingListTab({ order, contract, counterparty }) {
                   <td className="px-3 py-2 text-center border border-gray-200">
                     {item.quantity}
                   </td>
-                  <td className="px-3 py-2 text-right border border-gray-200">
-                    {formatMoney(item.price)}
-                  </td>
-                  <td className="px-3 py-2 text-right border border-gray-200 font-medium">
-                    {formatMoney(item.quantity * item.price)}
-                  </td>
+                  {!isWarehouse && (
+                    <td className="px-3 py-2 text-right border border-gray-200">
+                      {formatMoney(item.price)}
+                    </td>
+                  )}
+                  {!isWarehouse && (
+                    <td className="px-3 py-2 text-right border border-gray-200 font-medium">
+                      {formatMoney(item.quantity * item.price)}
+                    </td>
+                  )}
                   <td className="px-3 py-2 border border-gray-200">
                     <StatusBadge status={item.status} />
                   </td>
@@ -243,8 +258,10 @@ function PackingListTab({ order, contract, counterparty }) {
                 <td className="px-3 py-2 border border-gray-200 text-gray-800">ИТОГО</td>
                 <td className="px-3 py-2 border border-gray-200" />
                 <td className="px-3 py-2 text-center border border-gray-200">{totalQty}</td>
-                <td className="px-3 py-2 border border-gray-200" />
-                <td className="px-3 py-2 text-right border border-gray-200">{formatMoney(totalAmount)}</td>
+                {!isWarehouse && <td className="px-3 py-2 border border-gray-200" />}
+                {!isWarehouse && (
+                  <td className="px-3 py-2 text-right border border-gray-200">{formatMoney(totalAmount)}</td>
+                )}
                 <td className="px-3 py-2 border border-gray-200" />
               </tr>
             </tfoot>
@@ -275,7 +292,7 @@ const PAYMENT_STATUS_LABELS = {
   pending: { cls: 'badge-gray',   label: 'Ожидается' },
 };
 
-function ShipmentHistoryTab({ orderId }) {
+function ShipmentHistoryTab({ orderId, isWarehouse }) {
   const shipments = useAppStore(s => s.shipments);
   const payments  = useAppStore(s => s.payments);
 
@@ -293,47 +310,55 @@ function ShipmentHistoryTab({ orderId }) {
   const columns = [
     { key: 'date', label: 'Дата' },
     { key: 'invoiceNumber', label: 'Номер накладной' },
-    { key: 'amount', label: 'Сумма', render: (val) => formatMoney(val) },
-    {
-      key: 'id',
-      label: 'Статус оплаты',
-      render: (val, row) => {
-        // Match payment by shipmentId
-        const payment = payments.find(p => p.shipmentId === row.id);
-        if (!payment) return <span className="badge-gray">—</span>;
-        const ps = PAYMENT_STATUS_LABELS[payment.status] ?? { cls: 'badge-gray', label: payment.status };
-        return <span className={ps.cls}>{ps.label}</span>;
+    // Amount hidden for warehouse
+    ...(!isWarehouse ? [
+      { key: 'amount', label: 'Сумма', render: (val) => formatMoney(val) },
+    ] : []),
+    ...(!isWarehouse ? [
+      {
+        key: 'id',
+        label: 'Статус оплаты',
+        render: (val, row) => {
+          const payment = payments.find(p => p.shipmentId === row.id);
+          if (!payment) return <span className="badge-gray">—</span>;
+          const ps = PAYMENT_STATUS_LABELS[payment.status] ?? { cls: 'badge-gray', label: payment.status };
+          return <span className={ps.cls}>{ps.label}</span>;
+        },
       },
-    },
-    {
-      key: 'id',
-      label: 'Срок оплаты',
-      render: (val, row) => {
-        const payment = payments.find(p => p.shipmentId === row.id);
-        return payment?.dueDate ?? '—';
+      {
+        key: 'id',
+        label: 'Срок оплаты',
+        render: (val, row) => {
+          const payment = payments.find(p => p.shipmentId === row.id);
+          return payment?.dueDate ?? '—';
+        },
       },
-    },
-    {
-      key: 'id',
-      label: 'Оплачено',
-      render: (val, row) => {
-        const payment = payments.find(p => p.shipmentId === row.id);
-        if (!payment) return '—';
-        return payment.paidDate
-          ? `${payment.paidDate} (${formatMoney(payment.paidAmount ?? 0)})`
-          : '—';
+      {
+        key: 'id',
+        label: 'Оплачено',
+        render: (val, row) => {
+          const payment = payments.find(p => p.shipmentId === row.id);
+          if (!payment) return '—';
+          return payment.paidDate
+            ? `${payment.paidDate} (${formatMoney(payment.paidAmount ?? 0)})`
+            : '—';
+        },
       },
-    },
+    ] : []),
   ];
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">
         Отгрузок: <strong className="text-gray-800">{orderShipments.length}</strong>
-        {' · '}
-        Итого: <strong className="text-gray-800">
-          {formatMoney(orderShipments.reduce((s, sh) => s + sh.amount, 0))}
-        </strong>
+        {!isWarehouse && (
+          <>
+            {' · '}
+            Итого: <strong className="text-gray-800">
+              {formatMoney(orderShipments.reduce((s, sh) => s + sh.amount, 0))}
+            </strong>
+          </>
+        )}
       </p>
       <Table columns={columns} data={orderShipments} />
     </div>
@@ -468,6 +493,9 @@ export default function OrderDetail() {
   const orders      = useAppStore(s => s.orders);
   const contracts   = useAppStore(s => s.contracts);
   const counterparties = useAppStore(s => s.counterparties);
+  const currentService = useAppStore(s => s.currentService);
+
+  const isWarehouse = currentService === 'warehouse';
 
   const [activeTab,       setActiveTab]       = useState('spec');
   const [shipmentOpen,    setShipmentOpen]    = useState(false);
@@ -536,17 +564,19 @@ export default function OrderDetail() {
           </div>
         </div>
 
-        <div className="flex flex-col items-end gap-1 pl-10 sm:pl-0">
-          <p className="text-sm text-gray-500">
-            Сумма: <strong className="text-gray-900">{formatMoney(order.totalAmount)}</strong>
-          </p>
-          {contract?.paymentDelay && (
-            <p className="text-xs text-blue-600 flex items-center gap-1">
-              <Calendar size={11} />
-              Отсрочка платежа: <strong>{contract.paymentDelay} дн.</strong>
+        {!isWarehouse && (
+          <div className="flex flex-col items-end gap-1 pl-10 sm:pl-0">
+            <p className="text-sm text-gray-500">
+              Сумма: <strong className="text-gray-900">{formatMoney(order.totalAmount)}</strong>
             </p>
-          )}
-        </div>
+            {contract?.paymentDelay && (
+              <p className="text-xs text-blue-600 flex items-center gap-1">
+                <Calendar size={11} />
+                Отсрочка платежа: <strong>{contract.paymentDelay} дн.</strong>
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Business flow indicator */}
@@ -600,6 +630,7 @@ export default function OrderDetail() {
           <SpecificationTab
             order={order}
             onCreateShipment={() => setShipmentOpen(true)}
+            isWarehouse={isWarehouse}
           />
         )}
         {activeTab === 'packing' && (
@@ -607,10 +638,11 @@ export default function OrderDetail() {
             order={order}
             contract={contract}
             counterparty={counterparty}
+            isWarehouse={isWarehouse}
           />
         )}
         {activeTab === 'history' && (
-          <ShipmentHistoryTab orderId={id} />
+          <ShipmentHistoryTab orderId={id} isWarehouse={isWarehouse} />
         )}
       </div>
 

@@ -267,7 +267,10 @@ export default function OrdersList() {
   const orders = useAppStore(s => s.orders);
   const contracts = useAppStore(s => s.contracts);
   const counterparties = useAppStore(s => s.counterparties);
+  const currentService = useAppStore(s => s.currentService);
   const navigate = useNavigate();
+
+  const isWarehouse = currentService === 'warehouse';
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -275,6 +278,9 @@ export default function OrdersList() {
   const [newOpen, setNewOpen] = useState(false);
 
   const filtered = orders.filter(o => {
+    // Warehouse only sees ready-for-shipment (not yet shipped) orders
+    if (isWarehouse && o.status !== 'ready_for_shipment') return false;
+
     const contract = contracts.find(c => c.id === o.contractId);
     const cp = counterparties.find(c => c.id === o.counterpartyId);
     const matchSearch =
@@ -287,7 +293,7 @@ export default function OrdersList() {
     return matchSearch && matchStatus && matchPriority;
   });
 
-  const columns = [
+  const baseColumns = [
     { key: 'number', label: 'Номер' },
     {
       key: 'contractId',
@@ -319,11 +325,12 @@ export default function OrdersList() {
       label: 'Статус',
       render: (val) => <StatusBadge status={val} />,
     },
-    {
+    // Amount column hidden for warehouse
+    ...(!isWarehouse ? [{
       key: 'totalAmount',
       label: 'Сумма',
       render: (val) => formatMoney(val),
-    },
+    }] : []),
     {
       key: 'specification',
       label: 'Выполнение',
@@ -335,14 +342,21 @@ export default function OrdersList() {
     <div className="p-6 space-y-5 max-w-screen-xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <h1 className="text-xl font-bold text-gray-900">Заказы</h1>
-        <button
-          className="btn-primary flex items-center gap-1.5 self-start sm:self-auto"
-          onClick={() => setNewOpen(true)}
-        >
-          <Plus size={15} />
-          Новый заказ
-        </button>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Заказы</h1>
+          {isWarehouse && (
+            <p className="text-sm text-gray-500 mt-0.5">Готовые к отгрузке заказы</p>
+          )}
+        </div>
+        {!isWarehouse && (
+          <button
+            className="btn-primary flex items-center gap-1.5 self-start sm:self-auto"
+            onClick={() => setNewOpen(true)}
+          >
+            <Plus size={15} />
+            Новый заказ
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -366,20 +380,22 @@ export default function OrdersList() {
           )}
         </div>
 
-        {/* Status filter */}
-        <div className="relative">
-          <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          <select
-            className="input pl-8 pr-8 min-w-[180px]"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="">Все статусы</option>
-            {STATUS_OPTIONS.map(s => (
-              <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>
-            ))}
-          </select>
-        </div>
+        {/* Status filter — hidden for warehouse since they only see ready_for_shipment */}
+        {!isWarehouse && (
+          <div className="relative">
+            <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <select
+              className="input pl-8 pr-8 min-w-[180px]"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="">Все статусы</option>
+              {STATUS_OPTIONS.map(s => (
+                <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Priority filter */}
         <div className="relative">
@@ -399,18 +415,18 @@ export default function OrdersList() {
 
       {/* Summary */}
       <p className="text-sm text-gray-500">
-        Показано: <strong className="text-gray-800">{filtered.length}</strong> из {orders.length}
+        Показано: <strong className="text-gray-800">{filtered.length}</strong> из {isWarehouse ? orders.filter(o => o.status === 'ready_for_shipment').length : orders.length}
       </p>
 
       {/* Table */}
       <Table
-        columns={columns}
+        columns={baseColumns}
         data={filtered}
         onRowClick={(row) => navigate(`/orders/${row.id}`)}
       />
 
       {/* Modal */}
-      <NewOrderModal isOpen={newOpen} onClose={() => setNewOpen(false)} />
+      {!isWarehouse && <NewOrderModal isOpen={newOpen} onClose={() => setNewOpen(false)} />}
     </div>
   );
 }

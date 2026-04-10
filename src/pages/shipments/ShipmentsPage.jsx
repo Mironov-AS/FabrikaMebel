@@ -33,7 +33,7 @@ const emptyForm = {
 
 // ─── New Shipment Modal ───────────────────────────────────────────────────────
 
-function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, onSave }) {
+function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, onSave, isWarehouse }) {
   const [form, setForm] = useState(emptyForm);
 
   const set = (key) => (e) => setForm(prev => ({ ...prev, [key]: e.target.value }));
@@ -51,13 +51,18 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
   const paymentDelay = selectedContract?.paymentDelay ?? selectedContract?.payment_delay ?? 30;
   const paymentDueDate = form.date ? addDays(form.date, paymentDelay) : null;
 
+  // For warehouse: auto-calculate amount from order totalAmount
+  const autoAmount = selectedOrder?.totalAmount ?? 0;
+
   const handleClose = () => {
     setForm(emptyForm);
     onClose();
   };
 
   const handleSave = () => {
-    if (!form.orderId || !form.invoiceNumber || !form.amount) return;
+    if (!form.orderId || !form.invoiceNumber) return;
+    const effectiveAmount = isWarehouse ? autoAmount : parseFloat(form.amount);
+    if (!isWarehouse && !effectiveAmount) return;
     const order = selectedOrder;
     onSave({
       orderId: order.id,
@@ -65,7 +70,7 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
       counterpartyId: order.counterpartyId || order.counterparty_id,
       date: form.date,
       invoiceNumber: form.invoiceNumber,
-      amount: parseFloat(form.amount),
+      amount: effectiveAmount,
       items: (order.specification ?? []).map(i => ({
         specItemId: i.id,
         name: i.name,
@@ -76,7 +81,9 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
     handleClose();
   };
 
-  const canSave = form.orderId && form.invoiceNumber && parseFloat(form.amount) > 0;
+  const canSave = isWarehouse
+    ? form.orderId && form.invoiceNumber
+    : form.orderId && form.invoiceNumber && parseFloat(form.amount) > 0;
 
   return (
     <Modal
@@ -161,18 +168,20 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
           <input className="input" placeholder="ТН-2026-XXXX" value={form.invoiceNumber} onChange={set('invoiceNumber')} />
         </div>
 
-        {/* Amount */}
-        <div>
-          <label className="label">Сумма отгрузки (₽) <span className="text-red-400">*</span></label>
-          <input
-            className="input"
-            type="number"
-            min="1"
-            placeholder="0"
-            value={form.amount}
-            onChange={set('amount')}
-          />
-        </div>
+        {/* Amount — hidden for warehouse, auto-calculated */}
+        {!isWarehouse && (
+          <div>
+            <label className="label">Сумма отгрузки (₽) <span className="text-red-400">*</span></label>
+            <input
+              className="input"
+              type="number"
+              min="1"
+              placeholder="0"
+              value={form.amount}
+              onChange={set('amount')}
+            />
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -184,6 +193,8 @@ export default function ShipmentsPage() {
   const [showModal, setShowModal] = useState(false);
 
   const { shipments, orders, contracts, counterparties, addShipment } = useAppStore();
+  const currentService = useAppStore(s => s.currentService);
+  const isWarehouse = currentService === 'warehouse';
 
   // Only ready_for_shipment orders can be shipped
   const readyOrders = orders.filter(o => o.status === 'ready_for_shipment');
@@ -214,6 +225,11 @@ export default function ShipmentsPage() {
     try { await addShipment(data); } catch (e) { console.error(e); }
   };
 
+  // Table columns vary by service
+  const tableHeaders = isWarehouse
+    ? ['Дата', 'Накладная', 'Заказ', 'Контрагент', 'Позиции']
+    : ['Дата', 'Накладная', 'Заказ', 'Контрагент', 'Позиции', 'Сумма', 'Статус оплаты', 'Срок оплаты', 'Отсрочка'];
+
   return (
     <div className="p-6 space-y-5 max-w-screen-xl mx-auto">
       {/* Header */}
@@ -221,7 +237,9 @@ export default function ShipmentsPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-900">Отгрузки</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Реестр отгрузок. Срок оплаты исчисляется от даты отгрузки по условиям договора.
+            {isWarehouse
+              ? 'Реестр отгрузок по заказам.'
+              : 'Реестр отгрузок. Срок оплаты исчисляется от даты отгрузки по условиям договора.'}
           </p>
         </div>
         <button
@@ -251,11 +269,20 @@ export default function ShipmentsPage() {
       )}
 
       {/* Summary stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard icon={Truck}         label="Всего отгружено"  value={formatMoney(totalShipped)}  color="blue" />
-        <StatCard icon={Clock}         label="Ожидает оплаты"   value={formatMoney(totalPending)}  color="yellow" trend={pendingItems.length > 0 ? `${pendingItems.length} счёт(а)` : undefined} />
-        <StatCard icon={AlertCircle}   label="Просрочено"        value={formatMoney(totalOverdue)}  color="red"    trend={overdueItems.length > 0 ? `${overdueItems.length} счёт(а)` : undefined} />
-      </div>
+      {isWarehouse ? (
+        // Warehouse: show counts only, no amounts
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard icon={Truck}       label="Всего отгрузок"      value={String(enriched.length)}               color="blue" />
+          <StatCard icon={Clock}       label="Ожидает оплаты"      value={`${pendingItems.length} отгрузок`}    color="yellow" />
+          <StatCard icon={AlertCircle} label="Просрочено"           value={`${overdueItems.length} отгрузок`}   color="red" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard icon={Truck}       label="Всего отгружено"  value={formatMoney(totalShipped)}  color="blue" />
+          <StatCard icon={Clock}       label="Ожидает оплаты"   value={formatMoney(totalPending)}  color="yellow" trend={pendingItems.length > 0 ? `${pendingItems.length} счёт(а)` : undefined} />
+          <StatCard icon={AlertCircle} label="Просрочено"        value={formatMoney(totalOverdue)}  color="red"    trend={overdueItems.length > 0 ? `${overdueItems.length} счёт(а)` : undefined} />
+        </div>
+      )}
 
       {/* Shipments table */}
       <div className="card p-0 overflow-hidden">
@@ -263,7 +290,7 @@ export default function ShipmentsPage() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                {['Дата', 'Накладная', 'Заказ', 'Контрагент', 'Позиции', 'Сумма', 'Статус оплаты', 'Срок оплаты', 'Отсрочка'].map(h => (
+                {tableHeaders.map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
                     {h}
                   </th>
@@ -273,7 +300,7 @@ export default function ShipmentsPage() {
             <tbody className="divide-y divide-gray-100">
               {enriched.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={tableHeaders.length} className="px-4 py-12 text-center text-gray-400">
                     <Truck size={32} className="mx-auto mb-3 opacity-30" />
                     <p className="text-sm">Отгрузок пока нет</p>
                   </td>
@@ -282,7 +309,7 @@ export default function ShipmentsPage() {
                 enriched.map(s => (
                   <tr
                     key={s.id}
-                    className={s.overdue ? 'bg-red-50' : 'hover:bg-gray-50 transition-colors'}
+                    className={s.overdue && !isWarehouse ? 'bg-red-50' : 'hover:bg-gray-50 transition-colors'}
                   >
                     <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{s.date}</td>
                     <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{s.invoiceNumber}</td>
@@ -295,42 +322,50 @@ export default function ShipmentsPage() {
                         ))}
                       </ul>
                     </td>
-                    <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">
-                      {formatMoney(s.amount)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex flex-col gap-1">
-                        {s.paidAmount >= s.amount ? (
-                          <span className="flex items-center gap-1 text-green-600 text-xs font-medium">
-                            <CheckCircle size={12} /> Оплачено {s.paidDate}
-                          </span>
-                        ) : s.overdue ? (
-                          <>
-                            <StatusBadge status="overdue" />
-                            <span className="text-xs text-red-600 flex items-center gap-1">
-                              <AlertCircle size={11} />
-                              {daysDiff(s.paymentDueDate)} дн. просрочки
+                    {!isWarehouse && (
+                      <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">
+                        {formatMoney(s.amount)}
+                      </td>
+                    )}
+                    {!isWarehouse && (
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex flex-col gap-1">
+                          {s.paidAmount >= s.amount ? (
+                            <span className="flex items-center gap-1 text-green-600 text-xs font-medium">
+                              <CheckCircle size={12} /> Оплачено {s.paidDate}
                             </span>
-                          </>
-                        ) : (
-                          <StatusBadge status="pending" />
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {s.paymentDueDate ? (
-                        <span className={s.overdue ? 'text-red-600 font-medium text-sm' : 'text-gray-700 text-sm'}>
-                          {s.paymentDueDate}
-                        </span>
-                      ) : '—'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {s.contract ? (
-                        <span className="text-xs text-blue-600 font-medium">
-                          {s.contract.paymentDelay ?? s.contract.payment_delay} дн.
-                        </span>
-                      ) : '—'}
-                    </td>
+                          ) : s.overdue ? (
+                            <>
+                              <StatusBadge status="overdue" />
+                              <span className="text-xs text-red-600 flex items-center gap-1">
+                                <AlertCircle size={11} />
+                                {daysDiff(s.paymentDueDate)} дн. просрочки
+                              </span>
+                            </>
+                          ) : (
+                            <StatusBadge status="pending" />
+                          )}
+                        </div>
+                      </td>
+                    )}
+                    {!isWarehouse && (
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {s.paymentDueDate ? (
+                          <span className={s.overdue ? 'text-red-600 font-medium text-sm' : 'text-gray-700 text-sm'}>
+                            {s.paymentDueDate}
+                          </span>
+                        ) : '—'}
+                      </td>
+                    )}
+                    {!isWarehouse && (
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {s.contract ? (
+                          <span className="text-xs text-blue-600 font-medium">
+                            {s.contract.paymentDelay ?? s.contract.payment_delay} дн.
+                          </span>
+                        ) : '—'}
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -347,6 +382,7 @@ export default function ShipmentsPage() {
         contracts={contracts}
         counterparties={counterparties}
         onSave={handleSave}
+        isWarehouse={isWarehouse}
       />
     </div>
   );
