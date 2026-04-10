@@ -71,6 +71,10 @@ export const productionApi = {
   lines: () => api.get('/production/lines'),
   createTask: (data) => api.post('/production/tasks', data),
   updateTask: (id, data) => api.put(`/production/tasks/${id}`, data),
+  // Order-centric production endpoints
+  productionOrders: () => api.get('/production/orders'),
+  markOrderReady: (id) => api.put(`/production/orders/${id}/ready`),
+  updateOrderItem: (orderId, itemId, data) => api.put(`/production/orders/${orderId}/items/${itemId}`, data),
 };
 
 // Notifications API

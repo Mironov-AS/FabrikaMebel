@@ -52,6 +52,9 @@
   .badge-purple {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800;
   }
+  .badge-orange {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800;
+  }
   .table-header {
     @apply text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-3 bg-gray-50;
   }

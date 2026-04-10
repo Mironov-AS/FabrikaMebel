@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, AlertTriangle, Printer, Plus, Package,
-  TruckIcon, ClipboardList,
+  TruckIcon, ClipboardList, Calendar,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { formatMoney, STATUS_LABELS } from '../../data/mockData';
@@ -536,11 +536,48 @@ export default function OrderDetail() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 pl-10 sm:pl-0">
+        <div className="flex flex-col items-end gap-1 pl-10 sm:pl-0">
           <p className="text-sm text-gray-500">
             Сумма: <strong className="text-gray-900">{formatMoney(order.totalAmount)}</strong>
           </p>
+          {contract?.paymentDelay && (
+            <p className="text-xs text-blue-600 flex items-center gap-1">
+              <Calendar size={11} />
+              Отсрочка платежа: <strong>{contract.paymentDelay} дн.</strong>
+            </p>
+          )}
         </div>
+      </div>
+
+      {/* Business flow indicator */}
+      <div className="flex items-center gap-0 text-xs overflow-x-auto pb-1">
+        {[
+          { status: 'planned',            label: 'Запланирован' },
+          { status: 'in_production',      label: 'В производстве' },
+          { status: 'ready_for_shipment', label: 'Готов к отгрузке' },
+          { status: 'shipped',            label: 'Отгружен' },
+          { status: 'completed',          label: 'Завершён' },
+        ].map((step, idx, arr) => {
+          const statuses = ['planned', 'in_production', 'ready_for_shipment', 'shipped', 'completed'];
+          const currentIdx = statuses.indexOf(order.status);
+          const stepIdx    = statuses.indexOf(step.status);
+          const isPast     = stepIdx < currentIdx;
+          const isCurrent  = step.status === order.status;
+          return (
+            <div key={step.status} className="flex items-center">
+              <div className={`px-3 py-1.5 rounded-full whitespace-nowrap font-medium transition-all ${
+                isCurrent ? 'bg-blue-600 text-white' :
+                isPast    ? 'bg-green-100 text-green-700' :
+                            'bg-gray-100 text-gray-400'
+              }`}>
+                {step.label}
+              </div>
+              {idx < arr.length - 1 && (
+                <div className={`h-px w-4 flex-shrink-0 ${isPast || isCurrent ? 'bg-green-400' : 'bg-gray-200'}`} />
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Tabs */}

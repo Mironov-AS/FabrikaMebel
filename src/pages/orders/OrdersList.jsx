@@ -260,7 +260,7 @@ function NewOrderModal({ isOpen, onClose }) {
 
 // ─── Orders List ──────────────────────────────────────────────────────────────
 
-const STATUS_OPTIONS = ['planned', 'in_production', 'shipped', 'completed'];
+const STATUS_OPTIONS = ['planned', 'in_production', 'ready_for_shipment', 'shipped', 'completed'];
 const PRIORITY_OPTIONS = ['high', 'medium', 'low'];
 
 export default function OrdersList() {

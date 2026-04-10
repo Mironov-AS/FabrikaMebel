@@ -42,10 +42,24 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
   const { orderId, orderNumber, counterpartyId, date, invoiceNumber, amount, paymentDueDate, items = [] } = req.body;
   if (!invoiceNumber) return res.status(400).json({ error: 'Номер счёта обязателен' });
 
+  // Auto-calculate payment_due_date from contract.payment_delay if not provided manually
+  let resolvedPaymentDueDate = paymentDueDate || null;
+  if (!resolvedPaymentDueDate && orderId) {
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+    if (order && order.contract_id) {
+      const contract = db.prepare('SELECT * FROM contracts WHERE id = ?').get(order.contract_id);
+      if (contract && contract.payment_delay != null && date) {
+        const shipmentDate = new Date(date);
+        shipmentDate.setDate(shipmentDate.getDate() + contract.payment_delay);
+        resolvedPaymentDueDate = shipmentDate.toISOString().slice(0, 10);
+      }
+    }
+  }
+
   const result = db.prepare(`
     INSERT INTO shipments (order_id, order_number, counterparty_id, date, invoice_number, amount, status, payment_due_date, paid_amount)
     VALUES (?, ?, ?, ?, ?, ?, 'shipped', ?, 0)
-  `).run(orderId || null, orderNumber || null, counterpartyId || null, date, invoiceNumber, amount || 0, paymentDueDate || null);
+  `).run(orderId || null, orderNumber || null, counterpartyId || null, date, invoiceNumber, amount || 0, resolvedPaymentDueDate);
 
   const shipmentId = result.lastInsertRowid;
 
@@ -59,11 +73,16 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
     }
   }
 
+  // Mark the linked order as shipped
+  if (orderId) {
+    db.prepare("UPDATE orders SET status = 'shipped' WHERE id = ?").run(orderId);
+  }
+
   // Auto-create payment record
   db.prepare(`
     INSERT INTO payments (shipment_id, counterparty_id, amount, due_date, status, invoice_number)
     VALUES (?, ?, ?, ?, 'pending', ?)
-  `).run(shipmentId, counterpartyId || null, amount || 0, paymentDueDate || null, invoiceNumber);
+  `).run(shipmentId, counterpartyId || null, amount || 0, resolvedPaymentDueDate, invoiceNumber);
 
   logAudit(req.user.id, req.user.name, `Зарегистрирована отгрузка ${invoiceNumber}`, 'Отгрузка', shipmentId, req.ip);
   res.status(201).json(buildShipment(db.prepare('SELECT * FROM shipments WHERE id = ?').get(shipmentId)));

@@ -75,6 +75,96 @@ router.put('/tasks/:id', requireRole('admin', 'production_head', 'production_spe
   res.json(buildTask(db.prepare('SELECT * FROM production_tasks WHERE id = ?').get(req.params.id)));
 });
 
+// GET /api/production/orders — orders in production pipeline
+router.get('/orders', (req, res) => {
+  const rows = db.prepare(`
+    SELECT
+      o.*,
+      c.number AS contract_number,
+      c.payment_delay,
+      cp.name AS counterparty_name
+    FROM orders o
+    LEFT JOIN contracts c ON o.contract_id = c.id
+    LEFT JOIN counterparties cp ON o.counterparty_id = cp.id
+    WHERE o.status IN ('planned', 'in_production')
+    ORDER BY o.created_at DESC
+  `).all();
+
+  const items = {};
+  for (const row of rows) {
+    items[row.id] = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(row.id);
+  }
+
+  res.json(rows.map(row => ({
+    id: row.id,
+    number: row.number,
+    date: row.date,
+    status: row.status,
+    priority: row.priority,
+    shipmentDeadline: row.shipment_deadline,
+    totalAmount: row.total_amount,
+    notes: row.notes,
+    contractId: row.contract_id,
+    contractNumber: row.contract_number,
+    paymentDelay: row.payment_delay,
+    counterpartyId: row.counterparty_id,
+    counterpartyName: row.counterparty_name,
+    specification: (items[row.id] || []).map(i => ({
+      id: i.id,
+      name: i.name,
+      article: i.article,
+      quantity: i.quantity,
+      price: i.price,
+      category: i.category,
+      status: i.status,
+      shipped: i.shipped,
+    })),
+  })));
+});
+
+// PUT /api/production/orders/:id/ready — mark order as ready_for_shipment
+router.put('/orders/:id/ready', requireRole('admin', 'production_head', 'production_specialist', 'director'), (req, res) => {
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Заказ не найден' });
+
+  db.prepare("UPDATE orders SET status = 'ready_for_shipment' WHERE id = ?").run(req.params.id);
+
+  logAudit(req.user.id, req.user.name, `Заказ ${order.number} готов к отгрузке`, 'Заказ', order.id, req.ip);
+  res.json({ message: 'Заказ помечен как готов к отгрузке', orderId: order.id, status: 'ready_for_shipment' });
+});
+
+// PUT /api/production/orders/:id/items/:itemId — update order item status
+router.put('/orders/:id/items/:itemId', requireRole('admin', 'production_head', 'production_specialist'), (req, res) => {
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Заказ не найден' });
+
+  const item = db.prepare('SELECT * FROM order_items WHERE id = ? AND order_id = ?').get(req.params.itemId, req.params.id);
+  if (!item) return res.status(404).json({ error: 'Позиция заказа не найдена' });
+
+  const { status } = req.body;
+  if (!status) return res.status(400).json({ error: 'Статус обязателен' });
+
+  const validStatuses = ['planned', 'in_production', 'done'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ error: `Недопустимый статус. Допустимые значения: ${validStatuses.join(', ')}` });
+  }
+
+  db.prepare('UPDATE order_items SET status = ? WHERE id = ?').run(status, req.params.itemId);
+
+  logAudit(req.user.id, req.user.name, `Обновлён статус позиции заказа ${order.number}: ${status}`, 'Заказ', order.id, req.ip);
+  res.json({
+    id: item.id,
+    orderId: order.id,
+    name: item.name,
+    article: item.article,
+    quantity: item.quantity,
+    price: item.price,
+    category: item.category,
+    status,
+    shipped: item.shipped,
+  });
+});
+
 // GET /api/production/lines
 router.get('/lines', (req, res) => {
   res.json([

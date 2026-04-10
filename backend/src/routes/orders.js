@@ -62,8 +62,34 @@ router.post('/', requireRole('admin', 'sales_manager', 'director'), (req, res) =
   res.status(201).json(buildOrder(db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId)));
 });
 
+// PUT /api/orders/:id/items/:itemId
+router.put('/:id/items/:itemId', requireRole('admin', 'sales_manager', 'director', 'production_head', 'production_specialist'), (req, res) => {
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Заказ не найден' });
+
+  const item = db.prepare('SELECT * FROM order_items WHERE id = ? AND order_id = ?').get(req.params.itemId, req.params.id);
+  if (!item) return res.status(404).json({ error: 'Позиция заказа не найдена' });
+
+  const { name, article, quantity, price, category, status, shipped } = req.body;
+
+  db.prepare(`
+    UPDATE order_items SET
+      name = COALESCE(?, name),
+      article = COALESCE(?, article),
+      quantity = COALESCE(?, quantity),
+      price = COALESCE(?, price),
+      category = COALESCE(?, category),
+      status = COALESCE(?, status),
+      shipped = COALESCE(?, shipped)
+    WHERE id = ?
+  `).run(name, article, quantity, price, category, status, shipped, req.params.itemId);
+
+  logAudit(req.user.id, req.user.name, `Изменена позиция заказа ${order.number}`, 'Заказ', order.id, req.ip);
+  res.json(buildOrder(db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id)));
+});
+
 // PUT /api/orders/:id
-router.put('/:id', requireRole('admin', 'sales_manager', 'director', 'production_head'), (req, res) => {
+router.put('/:id', requireRole('admin', 'sales_manager', 'director', 'production_head', 'production_specialist'), (req, res) => {
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
   if (!order) return res.status(404).json({ error: 'Заказ не найден' });
 

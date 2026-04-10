@@ -143,6 +143,23 @@ const useAppStore = create((set, get) => ({
     set(s => ({ productionTasks: s.productionTasks.map(t => t.id === id ? data : t) }));
     return data;
   },
+  markOrderReadyForShipment: async (orderId) => {
+    await productionApi.markOrderReady(orderId);
+    // refresh orders list
+    const { data } = await ordersApi.list();
+    set({ orders: data });
+  },
+  updateOrderItemStatus: async (orderId, itemId, status) => {
+    await productionApi.updateOrderItem(orderId, itemId, { status });
+    // refresh orders list
+    const { data } = await ordersApi.list();
+    set({ orders: data });
+  },
+  sendOrderToProduction: async (orderId) => {
+    const { data } = await ordersApi.update(orderId, { status: 'in_production' });
+    set(s => ({ orders: s.orders.map(o => o.id === orderId ? data : o) }));
+    return data;
+  },
 
   // ─── Chat ────────────────────────────────────────────────
   sendMessage: async (message) => {
