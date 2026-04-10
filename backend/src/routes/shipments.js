@@ -42,11 +42,17 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
   const { orderId, orderNumber, counterpartyId, date, invoiceNumber, amount, paymentDueDate, items = [] } = req.body;
   if (!invoiceNumber) return res.status(400).json({ error: 'Номер счёта обязателен' });
 
+  // Validate orderId exists if provided
+  let order = null;
+  if (orderId) {
+    order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+    if (!order) return res.status(404).json({ error: 'Заказ не найден' });
+  }
+
   // Auto-calculate payment_due_date from contract.payment_delay if not provided manually
   let resolvedPaymentDueDate = paymentDueDate || null;
-  if (!resolvedPaymentDueDate && orderId) {
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
-    if (order && order.contract_id) {
+  if (!resolvedPaymentDueDate && order) {
+    if (order.contract_id) {
       const contract = db.prepare('SELECT * FROM contracts WHERE id = ?').get(order.contract_id);
       if (contract && contract.payment_delay != null && date) {
         const shipmentDate = new Date(date);
