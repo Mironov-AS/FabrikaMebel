@@ -51,7 +51,7 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
   const handleSave = () => {
     if (!form.orderId || !form.invoiceNumber) return;
     const effectiveAmount = isWarehouse ? autoAmount : parseFloat(form.amount);
-    if (!isWarehouse && !effectiveAmount) return;
+    if (!isWarehouse && !(effectiveAmount > 0)) return;
     const order = selectedOrder;
     onSave({
       orderId: order.id,

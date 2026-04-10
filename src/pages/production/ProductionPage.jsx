@@ -21,8 +21,8 @@ const ITEM_STATUS_LABELS = {
 // ─── Order card for production queue ─────────────────────────────────────────
 
 function OrderCard({ order, contracts, counterparties, onSendToProduction, onMarkReady }) {
-  const contract = contracts.find(c => c.id === order.contractId || c.id === order.contract_id);
-  const cp = counterparties.find(c => c.id === (order.counterpartyId || order.counterparty_id));
+  const contract = contracts.find(c => c.id === (order.contractId ?? order.contract_id));
+  const cp = counterparties.find(c => c.id === (order.counterpartyId ?? order.counterparty_id));
 
   const allDone = order.specification?.length > 0 &&
     order.specification.every(i => i.status === 'done');

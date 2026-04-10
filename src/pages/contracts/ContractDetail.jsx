@@ -17,15 +17,15 @@ import Table from '../../components/ui/Table';
 function EditContractModal({ isOpen, onClose, contract, onSave }) {
   const counterparties = useAppStore(s => s.counterparties);
   const [form, setForm] = useState({
-    number: contract.number ?? '',
-    date: contract.date ?? '',
-    validUntil: contract.validUntil ?? '',
-    status: contract.status ?? 'active',
-    subject: contract.subject ?? '',
-    amount: contract.amount ?? '',
-    paymentDelay: contract.paymentDelay ?? '',
-    penaltyRate: contract.penaltyRate ?? '',
-    counterpartyId: contract.counterpartyId ?? '',
+    number: contract?.number ?? '',
+    date: contract?.date ?? '',
+    validUntil: contract?.validUntil ?? '',
+    status: contract?.status ?? 'active',
+    subject: contract?.subject ?? '',
+    amount: contract?.amount ?? '',
+    paymentDelay: contract?.paymentDelay ?? '',
+    penaltyRate: contract?.penaltyRate ?? '',
+    counterpartyId: contract?.counterpartyId ?? '',
   });
   const set = (key) => (e) => setForm(prev => ({ ...prev, [key]: e.target.value }));
 

@@ -38,7 +38,8 @@ function SpecificationTab({ order, onCreateShipment, isWarehouse }) {
       key: 'remainder',
       label: 'Остаток',
       render: (_val, row) => {
-        const rem = row.quantity - (row.shipped ?? 0);
+        const shipped = isNaN(row.shipped) ? 0 : (row.shipped ?? 0);
+        const rem = row.quantity - shipped;
         return (
           <span className={rem > 0 ? 'text-orange-600 font-medium' : 'text-green-600 font-medium'}>
             {rem}

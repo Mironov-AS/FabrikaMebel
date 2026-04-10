@@ -82,6 +82,7 @@ export default function PaymentsPage() {
   };
 
   // ── Summary stats ────────────────────────────────────────────────────
+  const TODAY = new Date();
   const totalReceivable = payments.filter(p => p.status !== 'paid').reduce((s, p) => s + p.amount, 0);
   const overduePayments = payments.filter(p => p.status === 'overdue');
   const totalOverdue    = overduePayments.reduce((s, p) => s + p.amount, 0);

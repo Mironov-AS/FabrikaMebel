@@ -39,6 +39,8 @@ function completionPct(spec) {
 // ─── Empty spec item ──────────────────────────────────────────────────────────
 
 const EMPTY_ITEM = { name: '', article: '', quantity: '', price: '' };
+let _itemKeyCounter = 0;
+const nextKey = () => ++_itemKeyCounter;
 
 // ─── New Order Modal ──────────────────────────────────────────────────────────
 
@@ -55,7 +57,7 @@ function NewOrderModal({ isOpen, onClose }) {
   const counterparties = useAppStore(s => s.counterparties);
 
   const [form, setForm] = useState(EMPTY_FORM);
-  const [items, setItems] = useState([{ ...EMPTY_ITEM, _key: Date.now() }]);
+  const [items, setItems] = useState([{ ...EMPTY_ITEM, _key: nextKey() }]);
 
   const setField = (key) => (e) => setForm(prev => ({ ...prev, [key]: e.target.value }));
 
@@ -70,7 +72,7 @@ function NewOrderModal({ isOpen, onClose }) {
   };
 
   const addItem = () => {
-    setItems(prev => [...prev, { ...EMPTY_ITEM, _key: Date.now() }]);
+    setItems(prev => [...prev, { ...EMPTY_ITEM, _key: nextKey() }]);
   };
 
   const removeItem = (idx) => {
@@ -79,7 +81,7 @@ function NewOrderModal({ isOpen, onClose }) {
 
   const handleClose = () => {
     setForm(EMPTY_FORM);
-    setItems([{ ...EMPTY_ITEM, _key: Date.now() }]);
+    setItems([{ ...EMPTY_ITEM, _key: nextKey() }]);
     onClose();
   };
 

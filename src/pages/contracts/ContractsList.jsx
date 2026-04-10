@@ -40,10 +40,14 @@ function ImportModal({ isOpen, onClose }) {
     if (!f) return;
     setFile(f);
     setStage('analyzing');
-    setTimeout(() => {
-      setFields({ ...MOCK_EXTRACTED, number: `ДГ-2026-${String(Math.floor(Math.random() * 900) + 100)}` });
-      setStage('extracted');
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (!cancelled) {
+        setFields({ ...MOCK_EXTRACTED, number: `ДГ-2026-${String(Math.floor(Math.random() * 900) + 100)}` });
+        setStage('extracted');
+      }
     }, 2000);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, []);
 
   const handleDrop = (e) => {
