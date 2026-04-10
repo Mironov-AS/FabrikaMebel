@@ -2,9 +2,50 @@ import { create } from 'zustand';
 import {
   contractsApi, ordersApi, paymentsApi, shipmentsApi,
   claimsApi, usersApi, productionApi, notificationsApi, chatApi, auditApi, counterpartiesApi,
+  authApi, setApiAuthToken,
 } from '../services/api';
 
 const useAppStore = create((set, get) => ({
+  // ─── Auth ────────────────────────────────────────────────
+  currentUser: null,
+  accessToken: null,
+  isAuthenticated: false,
+
+  login: async (email, password) => {
+    const { data } = await authApi.login(email, password);
+    if (data.accessToken) {
+      setApiAuthToken(data.accessToken);
+      set({ currentUser: data.user, accessToken: data.accessToken, isAuthenticated: true });
+    }
+    return data;
+  },
+
+  completeMfa: async (mfaToken, code) => {
+    const { data } = await authApi.verifyMfa(mfaToken, code);
+    setApiAuthToken(data.accessToken);
+    set({ currentUser: data.user, accessToken: data.accessToken, isAuthenticated: true });
+    return data;
+  },
+
+  enableMfa: async (mfaToken, code) => {
+    const { data } = await authApi.enableMfa(mfaToken, code);
+    setApiAuthToken(data.accessToken);
+    set({ currentUser: data.user, accessToken: data.accessToken, isAuthenticated: true });
+    return data;
+  },
+
+  logout: async () => {
+    try { await authApi.logout(); } catch {}
+    setApiAuthToken(null);
+    set({ currentUser: null, accessToken: null, isAuthenticated: false, dataLoaded: false });
+  },
+
+  // Reset password (via admin action)
+  resetUserPassword: async (userId) => {
+    const { data } = await usersApi.resetPassword(userId);
+    return data;
+  },
+
   // ─── Service selection ───────────────────────────────────
   currentService: null,   // id of active service workspace
   setService: (id) => set({ currentService: id }),

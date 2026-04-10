@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Building2, Lock, User, ShieldCheck, Smartphone, Eye, EyeOff, KeyRound, ArrowLeft } from 'lucide-react';
 import useAppStore from '../store/appStore';
 import { authApi } from '../services/api';
@@ -17,6 +18,7 @@ const ROLE_LABELS = {
 // Steps: 'login' | 'mfa' | 'mfa_setup' | 'forgot' | 'reset_confirm'
 export default function LoginPage() {
   const { login, completeMfa, enableMfa } = useAppStore();
+  const navigate = useNavigate();
 
   const [step, setStep] = useState('login');
   const [email, setEmail] = useState('');
@@ -59,6 +61,8 @@ export default function LoginPage() {
         setMfaToken(result.mfaToken);
         setMfaPending(result);
         setStep('mfa');
+      } else {
+        navigate('/', { replace: true });
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Ошибка входа');
@@ -75,6 +79,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await completeMfa(mfaToken, mfaCode.trim());
+      navigate('/', { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Неверный код');
       setMfaCode('');
@@ -91,6 +96,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await enableMfa(mfaToken, mfaCode.trim());
+      navigate('/', { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Неверный код');
       setMfaCode('');

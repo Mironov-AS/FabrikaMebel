@@ -1,8 +1,11 @@
 import { useMemo } from 'react';
 import {
   FileText, Package, DollarSign, AlertTriangle,
-  MessageSquare, Activity, CheckCircle, Clock, TrendingUp,
+  MessageSquare, Activity, CheckCircle, Clock,
 } from 'lucide-react';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
 import useAppStore from '../store/appStore';
 import { formatMoney } from '../data/mockData';
 import StatCard from '../components/ui/StatCard';
@@ -11,6 +14,54 @@ import Table from '../components/ui/Table';
 
 function SectionTitle({ children }) {
   return <h2 className="text-base font-semibold text-gray-800 mb-3">{children}</h2>;
+}
+
+// Build monthly contract stats from the contracts array
+function buildContractDynamics(contracts) {
+  // Group contracts by month of creation date
+  const map = {};
+  contracts.forEach(c => {
+    if (!c.date) return;
+    const month = c.date.slice(0, 7); // 'YYYY-MM'
+    if (!map[month]) map[month] = { month, active: 0, completed: 0, suspended: 0, total: 0 };
+    map[month].total += 1;
+    if (c.status === 'active') map[month].active += 1;
+    else if (c.status === 'completed') map[month].completed += 1;
+    else if (c.status === 'suspended') map[month].suspended += 1;
+  });
+  return Object.values(map).sort((a, b) => a.month.localeCompare(b.month)).map(r => ({
+    ...r,
+    label: new Date(r.month + '-01').toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' }),
+  }));
+}
+
+function ContractDynamicsChart({ contracts }) {
+  const data = useMemo(() => buildContractDynamics(contracts), [contracts]);
+
+  if (data.length === 0) {
+    return (
+      <div className="card p-5 flex items-center justify-center h-40 text-gray-400 text-sm">
+        Нет данных для отображения
+      </div>
+    );
+  }
+
+  return (
+    <div className="card p-5">
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={25} />
+          <Tooltip />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Line type="monotone" dataKey="total" name="Всего" stroke="#6366f1" strokeWidth={2} dot={{ r: 4 }} />
+          <Line type="monotone" dataKey="active" name="Активные" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+          <Line type="monotone" dataKey="completed" name="Завершённые" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
 }
 
 export default function Dashboard() {
@@ -151,16 +202,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Analytics placeholder */}
+        {/* Contract dynamics chart */}
         <div>
-          <SectionTitle>Аналитика</SectionTitle>
-          <div className="grid grid-cols-1 gap-4">
-            <div className="card p-5 flex flex-col items-center justify-center h-40 gap-2">
-              <TrendingUp size={32} className="text-blue-300" />
-              <p className="text-sm text-gray-400">График динамики договоров</p>
-              <span className="text-xs text-gray-300">— в разработке —</span>
-            </div>
-          </div>
+          <SectionTitle>Аналитика договоров</SectionTitle>
+          <ContractDynamicsChart contracts={contracts} />
         </div>
       </div>
 

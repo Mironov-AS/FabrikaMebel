@@ -5,6 +5,15 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+// Set / clear the Authorization header on the shared instance
+export function setApiAuthToken(token) {
+  if (token) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  } else {
+    delete api.defaults.headers.common['Authorization'];
+  }
+}
+
 // Contracts API
 export const contractsApi = {
   list: () => api.get('/contracts'),
@@ -55,6 +64,7 @@ export const usersApi = {
   create: (data) => api.post('/users', data),
   update: (id, data) => api.put(`/users/${id}`, data),
   delete: (id) => api.delete(`/users/${id}`),
+  resetPassword: (id) => api.post(`/users/${id}/reset-password`),
 };
 
 // Counterparties API
@@ -94,6 +104,19 @@ export const chatApi = {
 // Audit API
 export const auditApi = {
   list: (limit = 50, offset = 0) => api.get('/audit', { params: { limit, offset } }),
+};
+
+// Auth API
+export const authApi = {
+  login: (email, password) => api.post('/auth/login', { email, password }),
+  setupMfa: (mfaToken) => api.post('/auth/mfa/setup', { mfaToken }),
+  verifyMfa: (mfaToken, code) => api.post('/auth/mfa/verify', { mfaToken, code }),
+  enableMfa: (mfaToken, code) => api.post('/auth/mfa/enable', { mfaToken, code }),
+  resetPasswordRequest: (email) => api.post('/auth/reset-password/request', { email }),
+  resetPasswordConfirm: (token, password) => api.post('/auth/reset-password/confirm', { token, password }),
+  logout: () => api.post('/auth/logout'),
+  me: () => api.get('/auth/me'),
+  refresh: () => api.post('/auth/refresh'),
 };
 
 export default api;

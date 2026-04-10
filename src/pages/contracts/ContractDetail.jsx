@@ -10,6 +10,107 @@ import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 import Table from '../../components/ui/Table';
 
+// ─── Edit Contract Modal ──────────────────────────────────────────────────────
+
+function EditContractModal({ isOpen, onClose, contract, onSave }) {
+  const counterparties = useAppStore(s => s.counterparties);
+  const [form, setForm] = useState({
+    number: contract.number ?? '',
+    date: contract.date ?? '',
+    validUntil: contract.validUntil ?? '',
+    status: contract.status ?? 'active',
+    subject: contract.subject ?? '',
+    amount: contract.amount ?? '',
+    paymentDelay: contract.paymentDelay ?? '',
+    penaltyRate: contract.penaltyRate ?? '',
+    counterpartyId: contract.counterpartyId ?? '',
+  });
+  const set = (key) => (e) => setForm(prev => ({ ...prev, [key]: e.target.value }));
+
+  const handleSave = () => {
+    if (!form.number || !form.date) return;
+    onSave({
+      ...form,
+      amount: Number(form.amount),
+      paymentDelay: form.paymentDelay ? Number(form.paymentDelay) : null,
+      penaltyRate: form.penaltyRate ? Number(form.penaltyRate) : null,
+      counterpartyId: Number(form.counterpartyId),
+    });
+  };
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Редактировать договор"
+      footer={
+        <>
+          <button className="btn-secondary" onClick={onClose}>Отмена</button>
+          <button className="btn-primary" onClick={handleSave} disabled={!form.number || !form.date}>
+            Сохранить
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Номер договора <span className="text-red-400">*</span></label>
+            <input className="input" value={form.number} onChange={set('number')} />
+          </div>
+          <div>
+            <label className="label">Статус</label>
+            <select className="input" value={form.status} onChange={set('status')}>
+              {Object.entries(STATUS_LABELS).filter(([k]) =>
+                ['active','completed','suspended','draft'].includes(k)
+              ).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="label">Предмет договора</label>
+          <input className="input" value={form.subject} onChange={set('subject')} />
+        </div>
+        <div>
+          <label className="label">Контрагент</label>
+          <select className="input" value={form.counterpartyId} onChange={set('counterpartyId')}>
+            <option value="">— выберите —</option>
+            {counterparties.map(cp => (
+              <option key={cp.id} value={cp.id}>{cp.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Дата заключения <span className="text-red-400">*</span></label>
+            <input className="input" type="date" value={form.date} onChange={set('date')} />
+          </div>
+          <div>
+            <label className="label">Срок действия до</label>
+            <input className="input" type="date" value={form.validUntil} onChange={set('validUntil')} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Сумма (₽)</label>
+            <input className="input" type="number" min="0" value={form.amount} onChange={set('amount')} />
+          </div>
+          <div>
+            <label className="label">Отсрочка платежа (дней)</label>
+            <input className="input" type="number" min="0" value={form.paymentDelay} onChange={set('paymentDelay')} />
+          </div>
+        </div>
+        <div>
+          <label className="label">Ставка штрафа (%/день)</label>
+          <input className="input" type="number" min="0" step="0.01" value={form.penaltyRate} onChange={set('penaltyRate')} />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function Tab({ label, active, onClick }) {
@@ -341,7 +442,9 @@ export default function ContractDetail() {
   const navigate = useNavigate();
   const contracts = useAppStore(s => s.contracts);
   const counterparties = useAppStore(s => s.counterparties);
+  const updateContract = useAppStore(s => s.updateContract);
   const [activeTab, setActiveTab] = useState('info');
+  const [editOpen, setEditOpen] = useState(false);
 
   const id = parseInt(contractId, 10);
   const contract = contracts.find(c => c.id === id);
@@ -382,7 +485,7 @@ export default function ContractDetail() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button className="btn-secondary flex items-center gap-1.5">
+          <button className="btn-secondary flex items-center gap-1.5" onClick={() => setEditOpen(true)}>
             <Edit size={14} />
             Редактировать
           </button>
@@ -412,6 +515,19 @@ export default function ContractDetail() {
         {activeTab === 'orders' && <OrdersTab contractId={id} />}
         {activeTab === 'versions' && <VersionsTab contract={contract} />}
       </div>
+
+      {/* Edit modal */}
+      {editOpen && (
+        <EditContractModal
+          isOpen={editOpen}
+          onClose={() => setEditOpen(false)}
+          contract={contract}
+          onSave={async (updates) => {
+            await updateContract(id, updates);
+            setEditOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,12 +1,32 @@
 import { useState } from 'react';
 import {
   Users, Settings, Shield, Plug, Plus, Pencil, Trash2, Lock, Ban, CheckCircle,
-  Eye, EyeOff, RefreshCw, ToggleLeft, ToggleRight, Download, Filter,
+  Eye, EyeOff, RefreshCw, ToggleLeft, ToggleRight, Download, Filter, X,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { ROLES, ROLE_LABELS } from '../../data/mockData';
 import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
+
+// ── CSV download helper ─────────────────────────────────────────────────────
+function downloadCSV(filename, rows) {
+  if (!rows || rows.length === 0) return;
+  const headers = Object.keys(rows[0]);
+  const escape = (v) => {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [
+    headers.map(escape).join(','),
+    ...rows.map(r => headers.map(h => escape(r[h])).join(',')),
+  ].join('\r\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
 
 // ── Integrations mock data ──────────────────────────────────────────────────
 const INTEGRATIONS_INITIAL = [
@@ -18,6 +38,11 @@ const INTEGRATIONS_INITIAL = [
     lastSync: '2026-04-06 08:00',
     color: 'bg-red-100 text-red-700',
     abbr: '1С',
+    configFields: [
+      { key: 'host', label: 'Хост сервера', value: 'http://1c.furniture.local:8080' },
+      { key: 'db', label: 'База данных', value: 'furniture_accounting' },
+      { key: 'user', label: 'Пользователь', value: 'integration_user' },
+    ],
   },
   {
     id: 2,
@@ -27,6 +52,11 @@ const INTEGRATIONS_INITIAL = [
     lastSync: null,
     color: 'bg-blue-100 text-blue-700',
     abbr: 'SAP',
+    configFields: [
+      { key: 'host', label: 'SAP Application Server', value: '' },
+      { key: 'client', label: 'Client', value: '' },
+      { key: 'sysnr', label: 'System Number', value: '' },
+    ],
   },
   {
     id: 3,
@@ -36,6 +66,10 @@ const INTEGRATIONS_INITIAL = [
     lastSync: '2026-04-05 22:30',
     color: 'bg-green-100 text-green-700',
     abbr: 'CRM',
+    configFields: [
+      { key: 'url', label: 'CRM URL', value: 'https://crm.furniture.ru' },
+      { key: 'apiKey', label: 'API Key', value: 'crm_key_***' },
+    ],
   },
   {
     id: 4,
@@ -45,15 +79,19 @@ const INTEGRATIONS_INITIAL = [
     lastSync: '2026-04-06 09:12',
     color: 'bg-purple-100 text-purple-700',
     abbr: 'API',
+    configFields: [
+      { key: 'webhookUrl', label: 'Webhook URL', value: 'https://hooks.furniture.ru/events' },
+      { key: 'secret', label: 'Secret', value: 'wh_secret_***' },
+    ],
   },
 ];
 
 const DOCUMENT_TEMPLATES = [
-  { id: 1, name: 'Шаблон договора поставки', updated: '2026-03-01' },
-  { id: 2, name: 'Дополнительное соглашение', updated: '2026-02-15' },
-  { id: 3, name: 'Акт сдачи-приёмки', updated: '2026-01-20' },
-  { id: 4, name: 'Счёт-фактура', updated: '2026-03-10' },
-  { id: 5, name: 'Товарная накладная', updated: '2026-02-28' },
+  { id: 1, name: 'Шаблон договора поставки', updated: '2026-03-01', ext: 'docx' },
+  { id: 2, name: 'Дополнительное соглашение', updated: '2026-02-15', ext: 'docx' },
+  { id: 3, name: 'Акт сдачи-приёмки', updated: '2026-01-20', ext: 'docx' },
+  { id: 4, name: 'Счёт-фактура', updated: '2026-03-10', ext: 'xlsx' },
+  { id: 5, name: 'Товарная накладная', updated: '2026-02-28', ext: 'xlsx' },
 ];
 
 const emptyUserForm = { name: '', email: '', role: ROLES.SALES_MANAGER, password: '' };
@@ -79,10 +117,12 @@ export default function AdminPage() {
 
   // Users tab
   const [showAddUserModal, setShowAddUserModal] = useState(false);
-  const [editRoleModal, setEditRoleModal] = useState(null); // user object
+  const [editRoleModal, setEditRoleModal] = useState(null);
   const [userForm, setUserForm] = useState(emptyUserForm);
   const [userFormErrors, setUserFormErrors] = useState({});
   const [editRoleValue, setEditRoleValue] = useState('');
+  const [resetPasswordModal, setResetPasswordModal] = useState(null); // user object
+  const [resetPasswordResult, setResetPasswordResult] = useState(null);
 
   // System settings
   const [settings, setSettings] = useState({
@@ -94,15 +134,24 @@ export default function AdminPage() {
   });
   const [settingsSaved, setSettingsSaved] = useState(false);
 
+  // Templates
+  const [templates, setTemplates] = useState(DOCUMENT_TEMPLATES);
+  const [editTemplateModal, setEditTemplateModal] = useState(null);
+  const [editTemplateName, setEditTemplateName] = useState('');
+
   // Audit log filters
   const [auditFilters, setAuditFilters] = useState({ user: '', entity: '', dateFrom: '', dateTo: '' });
 
   // Integrations
   const [integrations, setIntegrations] = useState(INTEGRATIONS_INITIAL);
+  const [configModal, setConfigModal] = useState(null); // integration object
+  const [configFields, setConfigFields] = useState([]);
+  const [pingStatus, setPingStatus] = useState({}); // id -> 'ok'|'error'|'loading'
 
-  // API keys — loaded from environment variable, never hardcoded in source
+  // API keys
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
-  const [apiKey] = useState(import.meta.env.VITE_API_KEY ?? '');
+  const [apiKey, setApiKey] = useState(import.meta.env.VITE_API_KEY ?? 'sk-furniture-' + Math.random().toString(36).slice(2, 18));
+  const [apiKeyCopied, setApiKeyCopied] = useState(false);
 
   const { users, auditLog, addUser, updateUser, deleteUser } = useAppStore();
 
@@ -129,17 +178,96 @@ export default function AdminPage() {
     updateUser(user.id, { active: !user.active });
   }
 
+  function handleResetPasswordOpen(user) {
+    setResetPasswordModal(user);
+    setResetPasswordResult(null);
+  }
+
+  function handleResetPasswordGenerate() {
+    // Generate a demo reset token (in production this would be sent by email)
+    const token = Math.random().toString(36).slice(2, 18) + Math.random().toString(36).slice(2, 18);
+    setResetPasswordResult(token);
+  }
+
   // ── Settings handler ──────────────────────────────────────
   function handleSaveSettings() {
+    // Persist to localStorage so the setting survives page refresh
+    try { localStorage.setItem('contractpro_settings', JSON.stringify(settings)); } catch {}
     setSettingsSaved(true);
     setTimeout(() => setSettingsSaved(false), 2500);
   }
 
+  // ── Template handlers ──────────────────────────────────────
+  function openEditTemplate(tpl) {
+    setEditTemplateModal(tpl);
+    setEditTemplateName(tpl.name);
+  }
+
+  function handleSaveTemplate() {
+    if (!editTemplateName.trim()) return;
+    setTemplates(prev => prev.map(t =>
+      t.id === editTemplateModal.id
+        ? { ...t, name: editTemplateName.trim(), updated: new Date().toISOString().slice(0, 10) }
+        : t
+    ));
+    setEditTemplateModal(null);
+  }
+
+  function handleDownloadTemplate(tpl) {
+    // In a real system this would download the actual file.
+    // Here we create a placeholder text file with the template name.
+    const content = `Шаблон: ${tpl.name}\nОбновлён: ${tpl.updated}\n\n[Содержимое шаблона будет здесь]`;
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${tpl.name}.${tpl.ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   // ── Integrations ──────────────────────────────────────────
   function toggleIntegration(id) {
-    setIntegrations((prev) =>
-      prev.map((intg) => (intg.id === id ? { ...intg, active: !intg.active } : intg)),
+    setIntegrations(prev =>
+      prev.map(intg => intg.id === id ? { ...intg, active: !intg.active } : intg),
     );
+  }
+
+  function openConfig(intg) {
+    setConfigModal(intg);
+    setConfigFields(intg.configFields.map(f => ({ ...f })));
+  }
+
+  function handleSaveConfig() {
+    setIntegrations(prev =>
+      prev.map(intg => intg.id === configModal.id
+        ? { ...intg, configFields: configFields }
+        : intg
+      )
+    );
+    setConfigModal(null);
+  }
+
+  async function handlePingIntegration(id) {
+    setPingStatus(prev => ({ ...prev, [id]: 'loading' }));
+    // Simulate a ping
+    await new Promise(r => setTimeout(r, 1200));
+    const intg = integrations.find(i => i.id === id);
+    // Active integrations "succeed", inactive "fail"
+    setPingStatus(prev => ({ ...prev, [id]: intg?.active ? 'ok' : 'error' }));
+    setTimeout(() => setPingStatus(prev => { const n = { ...prev }; delete n[id]; return n; }), 4000);
+  }
+
+  // ── API key ───────────────────────────────────────────────
+  function handleRefreshApiKey() {
+    const newKey = 'sk-furniture-' + Math.random().toString(36).slice(2, 18) + Math.random().toString(36).slice(2, 8);
+    setApiKey(newKey);
+  }
+
+  function handleCopyApiKey() {
+    navigator.clipboard.writeText(apiKey).catch(() => {});
+    setApiKeyCopied(true);
+    setTimeout(() => setApiKeyCopied(false), 2000);
   }
 
   // ── Audit filtering ───────────────────────────────────────
@@ -148,6 +276,17 @@ export default function AdminPage() {
     if (auditFilters.entity && entry.entity !== auditFilters.entity) return false;
     return true;
   });
+
+  function handleExportAudit() {
+    const rows = filteredAudit.map(e => ({
+      Пользователь: e.user,
+      Действие: e.action,
+      Объект: e.entity,
+      Дата: e.date,
+      'IP-адрес': e.ip,
+    }));
+    downloadCSV('Аудит_' + new Date().toISOString().slice(0, 10) + '.csv', rows);
+  }
 
   const auditEntities = [...new Set(auditLog.map((e) => e.entity))];
   const auditUsers = [...new Set(auditLog.map((e) => e.user))];
@@ -245,6 +384,7 @@ export default function AdminPage() {
                           <button
                             title="Сбросить пароль"
                             className="p-1.5 rounded-lg text-gray-400 hover:bg-yellow-50 hover:text-yellow-600 transition-colors"
+                            onClick={() => handleResetPasswordOpen(user)}
                           >
                             <Lock size={14} />
                           </button>
@@ -353,18 +493,24 @@ export default function AdminPage() {
           <div className="card">
             <h3 className="font-semibold text-gray-900 mb-4">Шаблоны документов</h3>
             <div className="space-y-2">
-              {DOCUMENT_TEMPLATES.map((tpl) => (
+              {templates.map((tpl) => (
                 <div key={tpl.id} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
                   <div>
                     <p className="text-sm font-medium text-gray-900">{tpl.name}</p>
                     <p className="text-xs text-gray-400 mt-0.5">Обновлён: {tpl.updated}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5">
+                    <button
+                      className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5"
+                      onClick={() => openEditTemplate(tpl)}
+                    >
                       <Pencil size={12} />
                       Редактировать
                     </button>
-                    <button className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5">
+                    <button
+                      className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5"
+                      onClick={() => handleDownloadTemplate(tpl)}
+                    >
                       <Download size={12} />
                       Скачать
                     </button>
@@ -433,9 +579,12 @@ export default function AdminPage() {
                 <Filter size={14} />
                 Сбросить
               </button>
-              <button className="btn-secondary flex items-center gap-2 py-2 ml-auto">
+              <button
+                className="btn-secondary flex items-center gap-2 py-2 ml-auto"
+                onClick={handleExportAudit}
+              >
                 <Download size={14} />
-                Экспорт
+                Экспорт CSV
               </button>
             </div>
           </div>
@@ -485,14 +634,12 @@ export default function AdminPage() {
             {integrations.map((intg) => (
               <div key={intg.id} className="card">
                 <div className="flex items-start gap-4">
-                  {/* Logo placeholder */}
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 ${intg.color}`}>
                     {intg.abbr}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="font-semibold text-gray-900">{intg.name}</h3>
-                      {/* Toggle */}
                       <button
                         onClick={() => toggleIntegration(intg.id)}
                         className={`flex-shrink-0 transition-colors ${intg.active ? 'text-green-500' : 'text-gray-300'}`}
@@ -513,14 +660,31 @@ export default function AdminPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 mt-4 pt-3 border-t border-gray-100">
-                  <button className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5">
+                  <button
+                    className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5"
+                    onClick={() => openConfig(intg)}
+                  >
                     <Settings size={12} />
                     Настроить
                   </button>
-                  <button className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5">
-                    <RefreshCw size={12} />
-                    Проверить подключение
+                  <button
+                    className={`btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 ${
+                      pingStatus[intg.id] === 'loading' ? 'opacity-60 cursor-not-allowed' : ''
+                    }`}
+                    disabled={pingStatus[intg.id] === 'loading'}
+                    onClick={() => handlePingIntegration(intg.id)}
+                  >
+                    <RefreshCw size={12} className={pingStatus[intg.id] === 'loading' ? 'animate-spin' : ''} />
+                    {pingStatus[intg.id] === 'loading' ? 'Проверка...' : 'Проверить подключение'}
                   </button>
+                  {pingStatus[intg.id] === 'ok' && (
+                    <span className="text-xs text-green-600 flex items-center gap-1">
+                      <CheckCircle size={12} /> Доступно
+                    </span>
+                  )}
+                  {pingStatus[intg.id] === 'error' && (
+                    <span className="text-xs text-red-500">✗ Недоступно</span>
+                  )}
                 </div>
               </div>
             ))}
@@ -548,11 +712,24 @@ export default function AdminPage() {
                   </button>
                   <button
                     className="p-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors text-gray-500"
-                    title="Обновить ключ"
+                    title="Копировать ключ"
+                    onClick={handleCopyApiKey}
+                  >
+                    {apiKeyCopied ? <CheckCircle size={16} className="text-green-500" /> : <Eye size={16} />}
+                  </button>
+                  <button
+                    className="p-2.5 border border-gray-200 rounded-xl hover:bg-yellow-50 transition-colors text-gray-500 hover:text-yellow-600"
+                    title="Сгенерировать новый ключ"
+                    onClick={handleRefreshApiKey}
                   >
                     <RefreshCw size={16} />
                   </button>
                 </div>
+                {apiKeyCopied && (
+                  <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                    <CheckCircle size={11} /> Ключ скопирован в буфер обмена
+                  </p>
+                )}
               </div>
               <p className="text-xs text-gray-400 flex items-center gap-1.5">
                 <Shield size={12} />
@@ -563,7 +740,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Modal: Add user */}
+      {/* ── Modal: Add user ── */}
       <Modal
         isOpen={showAddUserModal}
         onClose={() => { setShowAddUserModal(false); setUserForm(emptyUserForm); setUserFormErrors({}); }}
@@ -624,7 +801,7 @@ export default function AdminPage() {
         </div>
       </Modal>
 
-      {/* Modal: Edit role */}
+      {/* ── Modal: Edit role ── */}
       <Modal
         isOpen={!!editRoleModal}
         onClose={() => setEditRoleModal(null)}
@@ -648,6 +825,102 @@ export default function AdminPage() {
             ))}
           </select>
         </div>
+      </Modal>
+
+      {/* ── Modal: Reset password ── */}
+      <Modal
+        isOpen={!!resetPasswordModal}
+        onClose={() => { setResetPasswordModal(null); setResetPasswordResult(null); }}
+        title={`Сброс пароля — ${resetPasswordModal?.name ?? ''}`}
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => { setResetPasswordModal(null); setResetPasswordResult(null); }}>
+              Закрыть
+            </button>
+            {!resetPasswordResult && (
+              <button className="btn-primary flex items-center gap-2" onClick={handleResetPasswordGenerate}>
+                <Lock size={14} />
+                Создать токен сброса
+              </button>
+            )}
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600">
+            Будет создан одноразовый токен сброса пароля для пользователя <strong>{resetPasswordModal?.email}</strong>.
+            В продакшне токен отправляется на email пользователя.
+          </p>
+          {resetPasswordResult && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-2">
+              <p className="text-sm text-green-700 font-medium flex items-center gap-1.5">
+                <CheckCircle size={15} /> Токен сброса создан
+              </p>
+              <p className="text-xs text-gray-500">Отправьте пользователю следующий токен:</p>
+              <code className="block text-xs font-mono bg-white border border-green-200 rounded px-2 py-1.5 break-all select-all">
+                {resetPasswordResult}
+              </code>
+              <p className="text-xs text-gray-400">Токен действителен 1 час.</p>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* ── Modal: Edit template ── */}
+      <Modal
+        isOpen={!!editTemplateModal}
+        onClose={() => setEditTemplateModal(null)}
+        title="Редактировать шаблон"
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setEditTemplateModal(null)}>Отмена</button>
+            <button className="btn-primary" onClick={handleSaveTemplate} disabled={!editTemplateName.trim()}>
+              Сохранить
+            </button>
+          </>
+        }
+      >
+        <div>
+          <label className="form-label">Название шаблона</label>
+          <input
+            className="form-input"
+            value={editTemplateName}
+            onChange={e => setEditTemplateName(e.target.value)}
+            autoFocus
+          />
+        </div>
+      </Modal>
+
+      {/* ── Modal: Integration config ── */}
+      <Modal
+        isOpen={!!configModal}
+        onClose={() => setConfigModal(null)}
+        title={configModal ? `Настройка — ${configModal.name}` : ''}
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setConfigModal(null)}>Отмена</button>
+            <button className="btn-primary" onClick={handleSaveConfig}>Сохранить</button>
+          </>
+        }
+      >
+        {configModal && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">{configModal.description}</p>
+            {configFields.map((field, i) => (
+              <div key={field.key}>
+                <label className="form-label">{field.label}</label>
+                <input
+                  className="form-input"
+                  value={field.value}
+                  onChange={e => setConfigFields(prev =>
+                    prev.map((f, j) => j === i ? { ...f, value: e.target.value } : f)
+                  )}
+                  placeholder={field.label}
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </Modal>
     </div>
   );

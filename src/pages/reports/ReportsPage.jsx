@@ -8,6 +8,44 @@ import { formatMoney } from '../../data/mockData';
 import useAppStore from '../../store/appStore';
 import Modal from '../../components/ui/Modal';
 
+// ── CSV helpers ────────────────────────────────────────────────────────────────
+function rowsToCSV(rows) {
+  if (!rows || rows.length === 0) return '';
+  const headers = Object.keys(rows[0]);
+  const escape = (v) => {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? `"${s.replace(/"/g, '""')}"`
+      : s;
+  };
+  return [
+    headers.map(escape).join(','),
+    ...rows.map(row => headers.map(h => escape(row[h])).join(',')),
+  ].join('\r\n');
+}
+
+function downloadCSV(filename, rows) {
+  const csv = rowsToCSV(rows);
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadJSON(filename, rows) {
+  const json = JSON.stringify(rows, null, 2);
+  const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 const TODAY = new Date(2026, 3, 6);
 
 // ── Mock chart data ────────────────────────────────────────────────────────────
@@ -294,15 +332,21 @@ export default function ReportsPage() {
                   <Eye size={13} />
                   Сформировать
                 </button>
-                <button className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5">
-                  <Download size={13} />
-                  PDF
-                </button>
-                <button className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5">
+                <button
+                  className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5"
+                  title="Скачать как CSV (открывается в Excel)"
+                  onClick={() => downloadCSV(`${tpl.title}.csv`, tpl.mockData)}
+                >
                   <FileSpreadsheet size={13} />
-                  Excel
+                  Excel / CSV
                 </button>
-                <button className="btn-secondary text-xs py-1.5 px-3">CSV</button>
+                <button
+                  className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5"
+                  onClick={() => downloadJSON(`${tpl.title}.json`, tpl.mockData)}
+                >
+                  <Download size={13} />
+                  JSON
+                </button>
               </div>
             </div>
           ))}
@@ -311,6 +355,26 @@ export default function ReportsPage() {
 
       {/* ── TAB 3: Receivables ── */}
       {activeTab === 'receivables' && (
+        <div className="space-y-3">
+          <div className="flex justify-end">
+            <button
+              className="btn-secondary flex items-center gap-2"
+              onClick={() => {
+                const rows = receivables.map(r => ({
+                  Контрагент: r.name,
+                  'Сумма отгрузок': formatMoney(r.totalShipped),
+                  Оплачено: formatMoney(r.totalPaid),
+                  Задолженность: formatMoney(r.debt),
+                  'Дней просрочки': r.overdueDays || 0,
+                  Штрафы: formatMoney(r.penalty),
+                }));
+                downloadCSV('Дебиторская задолженность.csv', rows);
+              }}
+            >
+              <Download size={14} />
+              Экспорт в CSV
+            </button>
+          </div>
         <div className="card p-0 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -356,6 +420,7 @@ export default function ReportsPage() {
             </table>
           </div>
         </div>
+        </div>
       )}
 
       {/* Modal: Report Preview */}
@@ -366,9 +431,19 @@ export default function ReportsPage() {
         footer={
           <>
             <button className="btn-secondary" onClick={() => setPreviewReport(null)}>Закрыть</button>
-            <button className="btn-primary flex items-center gap-2">
+            <button
+              className="btn-secondary flex items-center gap-2"
+              onClick={() => previewReport && downloadJSON(`${previewReport.title}.json`, previewReport.mockData)}
+            >
               <Download size={14} />
-              Экспорт
+              JSON
+            </button>
+            <button
+              className="btn-primary flex items-center gap-2"
+              onClick={() => previewReport && downloadCSV(`${previewReport.title}.csv`, previewReport.mockData)}
+            >
+              <FileSpreadsheet size={14} />
+              Excel / CSV
             </button>
           </>
         }
