@@ -21,6 +21,19 @@ export const contractsApi = {
   create: (data) => api.post('/contracts', data),
   update: (id, data) => api.put(`/contracts/${id}`, data),
   delete: (id) => api.delete(`/contracts/${id}`),
+  // Files
+  getFiles: (contractId) => api.get(`/contracts/${contractId}/files`),
+  uploadFile: (contractId, file, onProgress) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/contracts/${contractId}/files`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: onProgress,
+    });
+  },
+  downloadFile: (contractId, fileId) =>
+    api.get(`/contracts/${contractId}/files/${fileId}/download`, { responseType: 'blob' }),
+  deleteFile: (contractId, fileId) => api.delete(`/contracts/${contractId}/files/${fileId}`),
 };
 
 // Orders API

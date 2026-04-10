@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Edit, FileText, AlertTriangle, CheckCircle,
-  Clock, Plus, User, Building,
+  Clock, Plus, User, Building, Upload, Download, Trash2, Paperclip,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { formatMoney } from '../../data/mockData';
@@ -11,6 +11,7 @@ import StatusBadge from '../../components/ui/StatusBadge';
 import Tab from '../../components/ui/Tabs';
 import Modal from '../../components/ui/Modal';
 import Table from '../../components/ui/Table';
+import { contractsApi } from '../../services/api';
 
 // ─── Edit Contract Modal ──────────────────────────────────────────────────────
 
@@ -415,6 +416,191 @@ function VersionsTab({ contract }) {
   );
 }
 
+// ─── Files Tab ────────────────────────────────────────────────────────────────
+
+const ALLOWED_EXTENSIONS = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.txt';
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+}
+
+function FilesTab({ contractId }) {
+  const [files, setFiles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [error, setError] = useState(null);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const loadFiles = useCallback(async () => {
+    try {
+      const { data } = await contractsApi.getFiles(contractId);
+      setFiles(data);
+    } catch {
+      setError('Не удалось загрузить список файлов');
+    } finally {
+      setLoading(false);
+    }
+  }, [contractId]);
+
+  useEffect(() => { loadFiles(); }, [loadFiles]);
+
+  const handleUpload = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    setUploadProgress(0);
+    setError(null);
+    try {
+      const { data } = await contractsApi.uploadFile(contractId, file, (e) => {
+        if (e.total) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+      });
+      setFiles(prev => [data, ...prev]);
+    } catch (err) {
+      const msg = err?.response?.data?.error || 'Ошибка загрузки файла';
+      setError(msg);
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDelete = async (fileId, name) => {
+    if (!window.confirm(`Удалить файл "${name}"?`)) return;
+    try {
+      await contractsApi.deleteFile(contractId, fileId);
+      setFiles(prev => prev.filter(f => f.id !== fileId));
+    } catch {
+      setError('Не удалось удалить файл');
+    }
+  };
+
+  const handleDownload = async (fileId, name) => {
+    try {
+      const { data } = await contractsApi.downloadFile(contractId, fileId);
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError('Не удалось скачать файл');
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleUpload(file);
+  };
+
+  const handleDragOver = (e) => { e.preventDefault(); setDragging(true); };
+  const handleDragLeave = () => setDragging(false);
+
+  if (loading) {
+    return <p className="text-sm text-gray-400 py-6 text-center">Загрузка...</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Drop zone */}
+      <div
+        className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer ${
+          dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+        }`}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onClick={() => !uploading && fileInputRef.current?.click()}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ALLOWED_EXTENSIONS}
+          className="hidden"
+          onChange={(e) => handleUpload(e.target.files[0])}
+        />
+        <Upload size={24} className="mx-auto text-gray-400 mb-2" />
+        {uploading ? (
+          <div className="space-y-2">
+            <p className="text-sm text-blue-600 font-medium">Загрузка... {uploadProgress}%</p>
+            <div className="w-full bg-gray-200 rounded-full h-1.5 max-w-xs mx-auto">
+              <div
+                className="bg-blue-500 h-1.5 rounded-full transition-all"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-gray-600 font-medium">Перетащите файл или нажмите для выбора</p>
+            <p className="text-xs text-gray-400 mt-1">PDF, Word, Excel, изображения — до 20 МБ</p>
+          </>
+        )}
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+          <AlertTriangle size={15} />
+          {error}
+        </div>
+      )}
+
+      {/* Files list */}
+      {files.length === 0 ? (
+        <div className="text-center py-10 text-gray-400">
+          <Paperclip size={32} className="mx-auto mb-2 opacity-50" />
+          <p className="text-sm">Файлы договора не загружены</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500">
+            Файлов: <strong className="text-gray-700">{files.length}</strong>
+          </p>
+          {files.map((file) => (
+            <div
+              key={file.id}
+              className="flex items-center justify-between gap-3 card px-4 py-3 hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <FileText size={18} className="text-blue-400 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{file.original_name}</p>
+                  <p className="text-xs text-gray-400">
+                    {formatBytes(file.size)} &nbsp;·&nbsp; {file.uploaded_by_name}
+                    &nbsp;·&nbsp; {new Date(file.uploaded_at).toLocaleDateString('ru-RU')}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
+                  title="Скачать"
+                  onClick={() => handleDownload(file.id, file.original_name)}
+                >
+                  <Download size={16} />
+                </button>
+                <button
+                  className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
+                  title="Удалить"
+                  onClick={() => handleDelete(file.id, file.original_name)}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Detail Page ─────────────────────────────────────────────────────────
 
 const TABS = [
@@ -422,6 +608,7 @@ const TABS = [
   { id: 'obligations', label: 'Обязательства' },
   { id: 'orders', label: 'Спецификация / Заказы' },
   { id: 'versions', label: 'Версии' },
+  { id: 'files', label: 'Файлы' },
 ];
 
 export default function ContractDetail() {
@@ -501,6 +688,7 @@ export default function ContractDetail() {
         )}
         {activeTab === 'orders' && <OrdersTab contractId={id} />}
         {activeTab === 'versions' && <VersionsTab contract={contract} />}
+        {activeTab === 'files' && <FilesTab contractId={id} />}
       </div>
 
       {/* Edit modal */}

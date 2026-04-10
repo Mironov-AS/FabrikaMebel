@@ -252,6 +252,23 @@ db.exec(`
   );
 `);
 
+// Contract files table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS contract_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id INTEGER NOT NULL,
+    original_name TEXT NOT NULL,
+    stored_name TEXT NOT NULL,
+    mimetype TEXT,
+    size INTEGER DEFAULT 0,
+    uploaded_by INTEGER,
+    uploaded_by_name TEXT,
+    uploaded_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+    FOREIGN KEY (uploaded_by) REFERENCES users(id)
+  );
+`);
+
 // Add delivery_address column to counterparties if missing
 const cpCols = db.pragma('table_info(counterparties)').map(c => c.name);
 if (!cpCols.includes('delivery_address')) {

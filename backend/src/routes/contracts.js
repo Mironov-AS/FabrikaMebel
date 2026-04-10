@@ -1,7 +1,45 @@
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
+const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { authenticate, requireRole, logAudit } = require('../middleware/auth');
 const { sanitizeStr, checkLengths } = require('../middleware/validate');
+
+const UPLOADS_DIR = path.resolve(__dirname, '../../uploads/contracts');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const ALLOWED_MIMETYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'image/jpeg',
+  'image/png',
+  'text/plain',
+]);
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${uuidv4()}${ext}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIMETYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Недопустимый тип файла'));
+    }
+  },
+});
 
 const VALID_CONTRACT_STATUSES = ['draft', 'active', 'suspended', 'completed'];
 
@@ -174,6 +212,81 @@ router.get('/:id/counterparty', (req, res) => {
   if (!contract) return res.status(404).json({ error: 'Договор не найден' });
   const cp = db.prepare('SELECT * FROM counterparties WHERE id = ?').get(contract.counterparty_id);
   res.json(cp);
+});
+
+// ─── Contract Files ───────────────────────────────────────────────────────────
+
+// GET /api/contracts/:id/files
+router.get('/:id/files', (req, res) => {
+  const contract = db.prepare('SELECT id FROM contracts WHERE id = ?').get(req.params.id);
+  if (!contract) return res.status(404).json({ error: 'Договор не найден' });
+  const files = db.prepare(
+    'SELECT id, original_name, mimetype, size, uploaded_by_name, uploaded_at FROM contract_files WHERE contract_id = ? ORDER BY uploaded_at DESC'
+  ).all(req.params.id);
+  res.json(files);
+});
+
+// POST /api/contracts/:id/files — upload a file
+router.post('/:id/files', requireRole('admin', 'sales_manager', 'director'), (req, res) => {
+  const contract = db.prepare('SELECT id, number FROM contracts WHERE id = ?').get(req.params.id);
+  if (!contract) return res.status(404).json({ error: 'Договор не найден' });
+
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'Файл слишком большой (максимум 20 МБ)' });
+      }
+      return res.status(400).json({ error: err.message || 'Ошибка загрузки файла' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'Файл не передан' });
+
+    const result = db.prepare(`
+      INSERT INTO contract_files (contract_id, original_name, stored_name, mimetype, size, uploaded_by, uploaded_by_name)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      contract.id,
+      req.file.originalname,
+      req.file.filename,
+      req.file.mimetype,
+      req.file.size,
+      req.user.id,
+      req.user.name,
+    );
+
+    logAudit(req.user.id, req.user.name, `Загружен файл к договору ${contract.number}`, 'Договор', contract.id, req.ip);
+
+    const file = db.prepare('SELECT id, original_name, mimetype, size, uploaded_by_name, uploaded_at FROM contract_files WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json(file);
+  });
+});
+
+// GET /api/contracts/:id/files/:fileId/download — download a file
+router.get('/:id/files/:fileId/download', (req, res) => {
+  const file = db.prepare('SELECT * FROM contract_files WHERE id = ? AND contract_id = ?').get(req.params.fileId, req.params.id);
+  if (!file) return res.status(404).json({ error: 'Файл не найден' });
+
+  const filePath = path.join(UPLOADS_DIR, file.stored_name);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Файл не найден на диске' });
+
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.original_name)}`);
+  res.setHeader('Content-Type', file.mimetype || 'application/octet-stream');
+  res.sendFile(filePath);
+});
+
+// DELETE /api/contracts/:id/files/:fileId
+router.delete('/:id/files/:fileId', requireRole('admin', 'sales_manager', 'director'), (req, res) => {
+  const file = db.prepare('SELECT * FROM contract_files WHERE id = ? AND contract_id = ?').get(req.params.fileId, req.params.id);
+  if (!file) return res.status(404).json({ error: 'Файл не найден' });
+
+  const filePath = path.join(UPLOADS_DIR, file.stored_name);
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+  db.prepare('DELETE FROM contract_files WHERE id = ?').run(file.id);
+
+  const contract = db.prepare('SELECT number FROM contracts WHERE id = ?').get(req.params.id);
+  logAudit(req.user.id, req.user.name, `Удалён файл "${file.original_name}" из договора ${contract?.number}`, 'Договор', req.params.id, req.ip);
+
+  res.json({ message: 'Файл удалён' });
 });
 
 module.exports = router;
