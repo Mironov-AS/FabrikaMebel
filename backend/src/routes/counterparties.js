@@ -20,13 +20,13 @@ router.get('/:id', (req, res) => {
 
 // POST /api/counterparties — admin, sales_manager
 router.post('/', requireRole('admin', 'sales_manager', 'director'), (req, res) => {
-  const { name, inn, kpp, address, contact, phone, email, priority } = req.body;
+  const { name, inn, kpp, address, delivery_address, contact, phone, email, priority } = req.body;
   if (!name) return res.status(400).json({ error: 'Название обязательно' });
 
   const result = db.prepare(`
-    INSERT INTO counterparties (name, inn, kpp, address, contact, phone, email, priority)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(name, inn || null, kpp || null, address || null, contact || null, phone || null, email || null, priority || 'medium');
+    INSERT INTO counterparties (name, inn, kpp, address, delivery_address, contact, phone, email, priority)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(name, inn || null, kpp || null, address || null, delivery_address || null, contact || null, phone || null, email || null, priority || 'medium');
 
   logAudit(req.user.id, req.user.name, `Создан контрагент ${name}`, 'Контрагент', result.lastInsertRowid, req.ip);
   res.status(201).json(db.prepare('SELECT * FROM counterparties WHERE id = ?').get(result.lastInsertRowid));
@@ -37,7 +37,7 @@ router.put('/:id', requireRole('admin', 'sales_manager', 'director'), (req, res)
   const cp = db.prepare('SELECT * FROM counterparties WHERE id = ?').get(req.params.id);
   if (!cp) return res.status(404).json({ error: 'Контрагент не найден' });
 
-  const { name, inn, kpp, address, contact, phone, email, priority } = req.body;
+  const { name, inn, kpp, address, delivery_address, contact, phone, email, priority } = req.body;
 
   db.prepare(`
     UPDATE counterparties SET
@@ -45,12 +45,13 @@ router.put('/:id', requireRole('admin', 'sales_manager', 'director'), (req, res)
       inn = COALESCE(?, inn),
       kpp = COALESCE(?, kpp),
       address = COALESCE(?, address),
+      delivery_address = ?,
       contact = COALESCE(?, contact),
       phone = COALESCE(?, phone),
       email = COALESCE(?, email),
       priority = COALESCE(?, priority)
     WHERE id = ?
-  `).run(name, inn, kpp, address, contact, phone, email, priority, req.params.id);
+  `).run(name, inn, kpp, address, delivery_address || null, contact, phone, email, priority, req.params.id);
 
   logAudit(req.user.id, req.user.name, `Обновлён контрагент ${cp.name}`, 'Контрагент', cp.id, req.ip);
   res.json(db.prepare('SELECT * FROM counterparties WHERE id = ?').get(req.params.id));

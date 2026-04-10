@@ -19,7 +19,7 @@ const PRIORITY_CLASSES = {
 };
 
 const emptyForm = {
-  name: '', inn: '', kpp: '', address: '', contact: '', phone: '', email: '', priority: 'medium',
+  name: '', inn: '', kpp: '', address: '', delivery_address: '', contact: '', phone: '', email: '', priority: 'medium',
 };
 
 function validate(form) {
@@ -55,6 +55,7 @@ function CounterpartyForm({ form, onChange, errors }) {
         {field('КПП', 'kpp', '770101001')}
       </div>
       {field('Адрес', 'address', 'г. Москва, ул. Примерная, 1')}
+      {field('Адрес доставки', 'delivery_address', 'г. Москва, ул. Складская, 5')}
       {field('Контактное лицо', 'contact', 'Иванов И.И.')}
       <div className="grid grid-cols-2 gap-3">
         {field('Телефон', 'phone', '+7 495 000-00-00')}
@@ -147,6 +148,7 @@ export default function CounterpartiesPage() {
       inn: cp.inn || '',
       kpp: cp.kpp || '',
       address: cp.address || '',
+      delivery_address: cp.delivery_address || '',
       contact: cp.contact || '',
       phone: cp.phone || '',
       email: cp.email || '',

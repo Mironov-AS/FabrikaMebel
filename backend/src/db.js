@@ -247,6 +247,12 @@ db.exec(`
   );
 `);
 
+// Add delivery_address column to counterparties if missing
+const cpCols = db.pragma('table_info(counterparties)').map(c => c.name);
+if (!cpCols.includes('delivery_address')) {
+  db.exec('ALTER TABLE counterparties ADD COLUMN delivery_address TEXT');
+}
+
 // Add account-lockout columns if missing (SQLite does not support IF NOT EXISTS for ALTER)
 const existingCols = db.pragma('table_info(users)').map(c => c.name);
 if (!existingCols.includes('failed_attempts')) {
