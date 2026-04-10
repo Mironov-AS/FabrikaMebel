@@ -8,7 +8,7 @@ import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 import StatCard from '../../components/ui/StatCard';
 
-const TODAY = new Date(2026, 3, 6);
+const TODAY = new Date();
 
 function isClaimOverdue(claim) {
   if (['resolved', 'closed'].includes(claim.status)) return false;

@@ -5,8 +5,10 @@ import {
   Clock, Plus, User, Building,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
-import { formatMoney, STATUS_LABELS } from '../../data/mockData';
+import { formatMoney } from '../../data/mockData';
+import { STATUS_LABELS } from '../../constants/statuses';
 import StatusBadge from '../../components/ui/StatusBadge';
+import Tab from '../../components/ui/Tabs';
 import Modal from '../../components/ui/Modal';
 import Table from '../../components/ui/Table';
 
@@ -112,21 +114,6 @@ function EditContractModal({ isOpen, onClose, contract, onSave }) {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function Tab({ label, active, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-        active
-          ? 'border-blue-600 text-blue-600'
-          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
 
 function InfoRow({ label, value }) {
   return (

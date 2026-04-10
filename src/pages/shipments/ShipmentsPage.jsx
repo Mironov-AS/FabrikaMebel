@@ -2,26 +2,15 @@ import { useState, useMemo } from 'react';
 import { Truck, Plus, AlertCircle, Calendar, Clock, CheckCircle, PackageCheck } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { formatMoney } from '../../data/mockData';
+import { daysDiff, addDays } from '../../utils/date';
+import { WAREHOUSE_SERVICE_ID } from '../../constants/services';
 import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 import StatCard from '../../components/ui/StatCard';
 
-const TODAY = new Date();
-
-function addDays(date, days) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-function daysDiff(dateStr) {
-  const d = new Date(dateStr);
-  return Math.floor((TODAY - d) / (1000 * 60 * 60 * 24));
-}
-
 function isOverdue(paymentDueDate, paidAmount, amount) {
   if (!paymentDueDate || paidAmount >= amount) return false;
-  return new Date(paymentDueDate) < TODAY;
+  return new Date(paymentDueDate) < new Date();
 }
 
 const emptyForm = {
@@ -201,7 +190,7 @@ export default function ShipmentsPage() {
 
   const { shipments, orders, contracts, counterparties, addShipment } = useAppStore();
   const currentService = useAppStore(s => s.currentService);
-  const isWarehouse = currentService === 'warehouse-logistics';
+  const isWarehouse = currentService === WAREHOUSE_SERVICE_ID;
 
   // Only ready_for_shipment orders can be shipped
   const readyOrders = orders.filter(o => o.status === 'ready_for_shipment');

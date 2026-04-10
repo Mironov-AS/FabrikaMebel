@@ -5,38 +5,14 @@ import {
   TruckIcon, ClipboardList, Calendar,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
-import { formatMoney, STATUS_LABELS } from '../../data/mockData';
+import { formatMoney } from '../../data/mockData';
+import { STATUS_LABELS } from '../../constants/statuses';
+import { WAREHOUSE_SERVICE_ID } from '../../constants/services';
 import StatusBadge from '../../components/ui/StatusBadge';
+import PriorityBadge from '../../components/ui/PriorityBadge';
+import Tab from '../../components/ui/Tabs';
 import Modal from '../../components/ui/Modal';
 import Table from '../../components/ui/Table';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const PRIORITY_MAP = {
-  high:   { cls: 'badge-red',    label: 'Высокий' },
-  medium: { cls: 'badge-yellow', label: 'Средний' },
-  low:    { cls: 'badge-green',  label: 'Низкий'  },
-};
-
-function PriorityBadge({ priority }) {
-  const p = PRIORITY_MAP[priority] ?? { cls: 'badge-gray', label: priority };
-  return <span className={p.cls}>{p.label}</span>;
-}
-
-function Tab({ label, active, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-        active
-          ? 'border-blue-600 text-blue-600'
-          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
 
 // ─── Specification Tab ────────────────────────────────────────────────────────
 
@@ -59,10 +35,10 @@ function SpecificationTab({ order, onCreateShipment, isWarehouse }) {
       render: (val) => val ?? 0,
     },
     {
-      key: 'quantity',
+      key: 'remainder',
       label: 'Остаток',
-      render: (val, row) => {
-        const rem = val - (row.shipped ?? 0);
+      render: (_val, row) => {
+        const rem = row.quantity - (row.shipped ?? 0);
         return (
           <span className={rem > 0 ? 'text-orange-600 font-medium' : 'text-green-600 font-medium'}>
             {rem}
@@ -72,11 +48,11 @@ function SpecificationTab({ order, onCreateShipment, isWarehouse }) {
     },
     // Price and Amount columns hidden for warehouse
     ...(!isWarehouse ? [
-      { key: 'price',  label: 'Цена',  render: (val) => formatMoney(val) },
+      { key: 'price',     label: 'Цена',  render: (val) => formatMoney(val) },
       {
-        key: 'price',
+        key: 'lineTotal',
         label: 'Сумма',
-        render: (val, row) => formatMoney(row.quantity * val),
+        render: (_val, row) => formatMoney(row.quantity * row.price),
       },
     ] : []),
     {
@@ -495,7 +471,7 @@ export default function OrderDetail() {
   const counterparties = useAppStore(s => s.counterparties);
   const currentService = useAppStore(s => s.currentService);
 
-  const isWarehouse = currentService === 'warehouse-logistics';
+  const isWarehouse = currentService === WAREHOUSE_SERVICE_ID;
 
   const [activeTab,       setActiveTab]       = useState('spec');
   const [shipmentOpen,    setShipmentOpen]    = useState(false);

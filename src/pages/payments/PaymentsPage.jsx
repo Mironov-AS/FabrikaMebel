@@ -5,15 +5,10 @@ import {
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { formatMoney } from '../../data/mockData';
+import { daysDiff } from '../../utils/date';
 import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 import StatCard from '../../components/ui/StatCard';
-
-const TODAY = new Date();
-
-function daysDiff(dateStr) {
-  return Math.floor((TODAY - new Date(dateStr)) / (1000 * 60 * 60 * 24));
-}
 
 const emptyPaymentForm = { amount: '', date: '', note: '' };
 

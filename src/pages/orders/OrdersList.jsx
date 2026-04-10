@@ -2,23 +2,13 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Filter, X, Trash2 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
-import { formatMoney, STATUS_LABELS } from '../../data/mockData';
+import { formatMoney } from '../../data/mockData';
+import { STATUS_LABELS } from '../../constants/statuses';
+import { WAREHOUSE_SERVICE_ID } from '../../constants/services';
 import StatusBadge from '../../components/ui/StatusBadge';
+import PriorityBadge from '../../components/ui/PriorityBadge';
 import Modal from '../../components/ui/Modal';
 import Table from '../../components/ui/Table';
-
-// ─── Priority badge helper ────────────────────────────────────────────────────
-
-const PRIORITY_MAP = {
-  high:   { cls: 'badge-red',    label: 'Высокий' },
-  medium: { cls: 'badge-yellow', label: 'Средний' },
-  low:    { cls: 'badge-green',  label: 'Низкий'  },
-};
-
-function PriorityBadge({ priority }) {
-  const p = PRIORITY_MAP[priority] ?? { cls: 'badge-gray', label: priority };
-  return <span className={p.cls}>{p.label}</span>;
-}
 
 // ─── Progress bar ─────────────────────────────────────────────────────────────
 
@@ -270,7 +260,7 @@ export default function OrdersList() {
   const currentService = useAppStore(s => s.currentService);
   const navigate = useNavigate();
 
-  const isWarehouse = currentService === 'warehouse-logistics';
+  const isWarehouse = currentService === WAREHOUSE_SERVICE_ID;
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');

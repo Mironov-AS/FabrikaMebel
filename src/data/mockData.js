@@ -473,23 +473,5 @@ export const AUDIT_LOG = [
 export const formatMoney = (v) =>
   new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(v);
 
-export const STATUS_LABELS = {
-  active:             'Активен',
-  completed:          'Завершён',
-  suspended:          'Приостановлен',
-  draft:              'Черновик',
-  planned:            'Запланирован',
-  in_production:      'В производстве',
-  ready_for_shipment: 'Готов к отгрузке',
-  shipped:            'Отгружен',
-  in_progress:        'В работе',
-  in_review:          'На рассмотрении',
-  open:               'Открыта',
-  resolved:           'Решена',
-  closed:             'Закрыта',
-  paid:               'Оплачен',
-  overdue:            'Просрочен',
-  pending:            'Ожидается',
-  produced:           'Произведён',
-  done:               'Готово',
-};
+// Re-exported for backward compatibility — import directly from '../../constants/statuses' in new code.
+export { STATUS_LABELS } from '../constants/statuses';

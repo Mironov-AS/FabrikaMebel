@@ -1,0 +1,44 @@
+// Single source of truth for status labels used across the app.
+// StatusBadge, ContractDetail, OrdersList, etc. all import from here.
+
+export const STATUS_LABELS = {
+  active:             'Активен',
+  completed:          'Завершён',
+  suspended:          'Приостановлен',
+  draft:              'Черновик',
+  planned:            'Запланирован',
+  in_production:      'В производстве',
+  ready_for_shipment: 'Готов к отгрузке',
+  shipped:            'Отгружен',
+  in_progress:        'В работе',
+  in_review:          'На рассмотрении',
+  open:               'Открыта',
+  resolved:           'Решена',
+  closed:             'Закрыта',
+  paid:               'Оплачен',
+  overdue:            'Просрочен',
+  pending:            'Ожидается',
+  produced:           'Произведён',
+  done:               'Готово',
+};
+
+export const STATUS_MAP = {
+  active:             'badge-green',
+  shipped:            'badge-green',
+  paid:               'badge-green',
+  produced:           'badge-green',
+  done:               'badge-green',
+  in_progress:        'badge-blue',
+  in_production:      'badge-blue',
+  in_review:          'badge-blue',
+  ready_for_shipment: 'badge-orange',
+  planned:            'badge-gray',
+  pending:            'badge-gray',
+  completed:          'badge-purple',
+  resolved:           'badge-purple',
+  closed:             'badge-purple',
+  overdue:            'badge-red',
+  suspended:          'badge-red',
+  draft:              'badge-yellow',
+  open:               'badge-yellow',
+};
