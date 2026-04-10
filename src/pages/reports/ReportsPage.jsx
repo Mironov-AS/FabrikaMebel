@@ -28,12 +28,6 @@ const cashFlowData = [
   { month: 'Апр', income: 680000, expenses: 520000 },
 ];
 
-const lineLoadData = [
-  { line: 'Линия А', load: 78 },
-  { line: 'Линия Б', load: 65 },
-  { line: 'Линия В', load: 52 },
-  { line: 'Сборочный', load: 88 },
-];
 
 const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444'];
 
@@ -254,20 +248,6 @@ export default function ReportsPage() {
                   ))}
                 </div>
               </div>
-            </div>
-
-            {/* Bar: Line load */}
-            <div className="card">
-              <h3 className="font-semibold text-gray-900 mb-4">Загрузка производственных линий</h3>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={lineLoadData} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                  <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => v + '%'} tick={{ fontSize: 11 }} />
-                  <YAxis type="category" dataKey="line" tick={{ fontSize: 12 }} width={80} />
-                  <Tooltip formatter={(v) => v + '%'} />
-                  <Bar dataKey="load" name="Загрузка" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
             </div>
           </div>
         </div>
