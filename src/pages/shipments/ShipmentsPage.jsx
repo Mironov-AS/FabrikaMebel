@@ -116,7 +116,9 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
                 const cp = counterparties.find(cp => cp.id === (o.counterpartyId || o.counterparty_id));
                 return (
                   <option key={o.id} value={o.id}>
-                    {o.number} — {cp?.name ?? '?'} (отсрочка {c?.paymentDelay ?? c?.payment_delay ?? '?'} дн.)
+                    {isWarehouse
+                      ? `${o.number} — ${cp?.name ?? '?'}`
+                      : `${o.number} — ${cp?.name ?? '?'} (отсрочка ${c?.paymentDelay ?? c?.payment_delay ?? '?'} дн.)`}
                   </option>
                 );
               })}
@@ -129,9 +131,14 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
           <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-3 space-y-1.5 text-sm">
             <p className="font-medium text-orange-800">{selectedOrder.number}</p>
             <p className="text-orange-700 text-xs">Контрагент: {cp?.name ?? '—'}</p>
-            {selectedContract && (
+            {selectedContract && !isWarehouse && (
               <p className="text-orange-700 text-xs">
                 Договор: <strong>{selectedContract.number}</strong> · Отсрочка: <strong>{paymentDelay} дн.</strong>
+              </p>
+            )}
+            {selectedContract && isWarehouse && (
+              <p className="text-orange-700 text-xs">
+                Договор: <strong>{selectedContract.number}</strong>
               </p>
             )}
             <div className="pt-1 text-xs text-orange-700">
@@ -149,8 +156,8 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
           <input className="input" type="date" value={form.date} onChange={set('date')} />
         </div>
 
-        {/* Payment due date preview */}
-        {paymentDueDate && selectedOrder && (
+        {/* Payment due date preview — Finance only */}
+        {!isWarehouse && paymentDueDate && selectedOrder && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center gap-3">
             <Calendar size={16} className="text-blue-500 flex-shrink-0" />
             <div className="text-sm">
@@ -238,7 +245,7 @@ export default function ShipmentsPage() {
           <h1 className="text-xl font-bold text-gray-900">Отгрузки</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {isWarehouse
-              ? 'Реестр отгрузок по заказам.'
+              ? 'Реестр отгрузок: что, кому и когда отгружено.'
               : 'Реестр отгрузок. Срок оплаты исчисляется от даты отгрузки по условиям договора.'}
           </p>
         </div>
@@ -270,11 +277,11 @@ export default function ShipmentsPage() {
 
       {/* Summary stats */}
       {isWarehouse ? (
-        // Warehouse: show counts only, no amounts
+        // Warehouse: operational metrics only, no financial data
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <StatCard icon={Truck}       label="Всего отгрузок"      value={String(enriched.length)}               color="blue" />
-          <StatCard icon={Clock}       label="Ожидает оплаты"      value={`${pendingItems.length} отгрузок`}    color="yellow" />
-          <StatCard icon={AlertCircle} label="Просрочено"           value={`${overdueItems.length} отгрузок`}   color="red" />
+          <StatCard icon={Truck}        label="Всего отгрузок"            value={String(enriched.length)}                                                     color="blue" />
+          <StatCard icon={PackageCheck} label="Контрагентов обслужено"    value={String(new Set(enriched.map(s => s.counterpartyId).filter(Boolean)).size)}  color="teal" />
+          <StatCard icon={Clock}        label="Заказов готово к отгрузке" value={String(readyOrders.length)}                                                  color="orange" />
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -309,7 +316,7 @@ export default function ShipmentsPage() {
                 enriched.map(s => (
                   <tr
                     key={s.id}
-                    className={s.overdue && !isWarehouse ? 'bg-red-50' : 'hover:bg-gray-50 transition-colors'}
+                    className={!isWarehouse && s.overdue ? 'bg-red-50' : 'hover:bg-gray-50 transition-colors'}
                   >
                     <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{s.date}</td>
                     <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{s.invoiceNumber}</td>
