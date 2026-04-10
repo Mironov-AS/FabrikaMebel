@@ -3,7 +3,7 @@ import { addDays, startOfWeek, endOfWeek, eachDayOfInterval, format, isToday, pa
 import { ru } from 'date-fns/locale';
 import { GripVertical, ChevronLeft, ChevronRight, SlidersHorizontal, X } from 'lucide-react';
 import useAppStore from '../../store/appStore';
-import { PRODUCTION_LINES, STATUS_LABELS, ROLES } from '../../data/mockData';
+import { PRODUCTION_LINES, STATUS_LABELS } from '../../data/mockData';
 import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 
@@ -518,9 +518,7 @@ function UpdateProgressModal({ isOpen, onClose, task, onSave }) {
 
 function TasksTab({ tasks }) {
   const updateProductionTask = useAppStore(s => s.updateProductionTask);
-  const currentUser          = useAppStore(s => s.currentUser);
-
-  const isProductionHead = currentUser?.role === ROLES.PRODUCTION_HEAD;
+  const isProductionHead = true; // all users can manage tasks
 
   const [statusFilter, setStatusFilter] = useState('');
   const [lineFilter,   setLineFilter]   = useState('');

@@ -1,68 +1,14 @@
 import { create } from 'zustand';
 import {
-  authApi, contractsApi, ordersApi, paymentsApi, shipmentsApi,
+  contractsApi, ordersApi, paymentsApi, shipmentsApi,
   claimsApi, usersApi, productionApi, notificationsApi, chatApi, auditApi, counterpartiesApi,
 } from '../services/api';
 
 const useAppStore = create((set, get) => ({
-  // ─── Auth ────────────────────────────────────────────────
-  currentUser: null,
-  accessToken: null,
-  isInitializing: true,
-
-  // Initialize session — refresh token lives in httpOnly cookie, no localStorage
-  initializeAuth: async () => {
-    try {
-      const { data } = await authApi.refresh();
-      window.__accessToken = data.accessToken;
-      set({ currentUser: data.user, accessToken: data.accessToken, isInitializing: false });
-      await get().loadAll();
-    } catch {
-      window.__accessToken = null;
-      set({ currentUser: null, accessToken: null, isInitializing: false });
-    }
-  },
-
-  // Login — returns { requiresMfa, requiresMfaSetup, mfaToken, user } or sets currentUser
-  login: async (email, password) => {
-    const { data } = await authApi.login(email, password);
-    if (data.accessToken) {
-      // No MFA — direct login; refresh token is set as httpOnly cookie by server
-      window.__accessToken = data.accessToken;
-      set({ currentUser: data.user, accessToken: data.accessToken });
-      await get().loadAll();
-    }
-    return data;
-  },
-
-  // Complete MFA verification
-  completeMfa: async (mfaToken, code) => {
-    const { data } = await authApi.verifyMfa(mfaToken, code);
-    window.__accessToken = data.accessToken;
-    set({ currentUser: data.user, accessToken: data.accessToken });
-    await get().loadAll();
-    return data;
-  },
-
-  // Enable MFA after setup
-  enableMfa: async (mfaToken, code) => {
-    const { data } = await authApi.enableMfa(mfaToken, code);
-    window.__accessToken = data.accessToken;
-    set({ currentUser: data.user, accessToken: data.accessToken });
-    await get().loadAll();
-    return data;
-  },
-
-  logout: async () => {
-    try { await authApi.logout(); } catch {}
-    window.__accessToken = null;
-    set({
-      currentUser: null, accessToken: null,
-      contracts: [], orders: [], shipments: [], payments: [],
-      claims: [], notifications: [], chatMessages: [], productionTasks: [],
-      users: [], auditLog: [], counterparties: [],
-    });
-  },
+  // ─── Service selection ───────────────────────────────────
+  currentService: null,   // id of active service workspace
+  setService: (id) => set({ currentService: id }),
+  clearService: () => set({ currentService: null }),
 
   // ─── Data ────────────────────────────────────────────────
   contracts: [],
@@ -77,10 +23,12 @@ const useAppStore = create((set, get) => ({
   auditLog: [],
   counterparties: [],
   isLoading: false,
+  dataLoaded: false,
   error: null,
 
-  // Load all data in parallel
+  // Load all data in parallel (called once on app start)
   loadAll: async () => {
+    if (get().dataLoaded) return;
     set({ isLoading: true, error: null });
     try {
       const [contracts, orders, shipments, payments, claims, notifications, tasks, counterparties] = await Promise.all([
@@ -94,16 +42,11 @@ const useAppStore = create((set, get) => ({
         counterpartiesApi.list(),
       ]);
 
-      const { currentUser } = get();
       let users = [];
-      if (currentUser && ['admin', 'director'].includes(currentUser.role)) {
-        try { const res = await usersApi.list(); users = res.data; } catch {}
-      }
+      try { const res = await usersApi.list(); users = res.data; } catch {}
 
       let auditLog = [];
-      if (currentUser && ['admin', 'director', 'analyst'].includes(currentUser.role)) {
-        try { const res = await auditApi.list(); auditLog = res.data.data; } catch {}
-      }
+      try { const res = await auditApi.list(); auditLog = res.data.data; } catch {}
 
       let chatMessages = [];
       try { const res = await chatApi.list(); chatMessages = res.data; } catch {}
@@ -121,6 +64,7 @@ const useAppStore = create((set, get) => ({
         auditLog,
         chatMessages,
         isLoading: false,
+        dataLoaded: true,
       });
     } catch (err) {
       set({ isLoading: false, error: err.message });

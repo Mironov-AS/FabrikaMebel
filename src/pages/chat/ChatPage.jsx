@@ -35,7 +35,7 @@ function buildConversations(messages) {
 }
 
 export default function ChatPage() {
-  const { chatMessages, contracts, counterparties, sendMessage, currentUser } = useAppStore();
+  const { chatMessages, contracts, counterparties, sendMessage } = useAppStore();
   const [activeConv, setActiveConv] = useState(null);
   const [inputText, setInputText] = useState('');
   const [showQuickReplies, setShowQuickReplies] = useState(false);
@@ -83,7 +83,7 @@ export default function ChatPage() {
       contractId: activeConv.contractId,
       counterpartyId: activeConv.counterpartyId,
       from: 'manager',
-      author: currentUser?.name ?? 'Менеджер',
+      author: 'Менеджер',
       text: inputText.trim(),
       date: new Date().toISOString().slice(0, 16).replace('T', ' '),
       read: true,

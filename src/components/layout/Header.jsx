@@ -44,11 +44,9 @@ export default function Header() {
 
   return (
     <header className="fixed top-0 left-60 right-0 h-14 bg-white border-b border-gray-200 z-20 flex items-center justify-between px-6">
-      {/* Page title */}
       <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
 
       <div className="flex items-center gap-4">
-        {/* Current date */}
         <span className="text-sm text-gray-400 capitalize hidden sm:block">
           {formatDate(new Date())}
         </span>
@@ -68,13 +66,9 @@ export default function Header() {
             )}
           </button>
 
-          {/* Dropdown */}
           {open && (
             <>
-              <div
-                className="fixed inset-0 z-10"
-                onClick={() => setOpen(false)}
-              />
+              <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
               <div className="absolute right-0 top-full mt-1 w-80 bg-white rounded-xl shadow-lg border border-gray-100 z-20 overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                   <span className="font-semibold text-sm text-gray-800">Уведомления</span>
