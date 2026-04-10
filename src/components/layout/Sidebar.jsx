@@ -1,9 +1,9 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { FileText, Home } from 'lucide-react';
+import { FileText, Home, ChevronLeft, ChevronRight } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { SERVICES, ALL_NAV_ITEMS } from '../../data/services';
 
-export default function Sidebar() {
+export default function Sidebar({ isCollapsed, onToggle }) {
   const currentServiceId = useAppStore(s => s.currentService);
   const location = useLocation();
   const navigate = useNavigate();
@@ -18,23 +18,37 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="flex flex-col fixed left-0 top-0 h-screen w-60 bg-white border-r border-gray-200 z-30">
+    <aside
+      className={`flex flex-col fixed left-0 top-0 h-screen bg-white border-r border-gray-200 z-30 transition-all duration-300 ${
+        isCollapsed ? 'w-14' : 'w-60'
+      }`}
+    >
       {/* Logo */}
       <button
         onClick={goHome}
-        className="flex items-center gap-2 px-5 py-4 border-b border-gray-100 hover:bg-blue-50 transition-colors w-full text-left"
+        className="flex items-center gap-2 px-3 py-4 border-b border-gray-100 hover:bg-blue-50 transition-colors w-full text-left overflow-hidden"
+        title={isCollapsed ? 'ContractPro' : undefined}
       >
-        <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+        <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
           <FileText size={16} className="text-white" />
         </div>
-        <span className="text-lg font-bold text-blue-600 tracking-tight">ContractPro</span>
+        {!isCollapsed && (
+          <span className="text-lg font-bold text-blue-600 tracking-tight whitespace-nowrap">ContractPro</span>
+        )}
       </button>
 
-      {/* Service badge + Home button */}
+      {/* Service badge */}
       {service && (
-        <div className={`mx-3 mt-3 mb-1 px-3 py-2 rounded-xl ${service.lightBg} border ${service.borderColor} flex items-center gap-2`}>
-          <service.icon size={15} className={service.textColor} />
-          <span className={`text-xs font-semibold truncate flex-1 ${service.textColor}`}>{service.name}</span>
+        <div
+          className={`mx-2 mt-3 mb-1 rounded-xl border flex items-center overflow-hidden transition-all duration-300 ${service.lightBg} ${service.borderColor} ${
+            isCollapsed ? 'px-2 py-2 justify-center' : 'px-3 py-2 gap-2'
+          }`}
+          title={isCollapsed ? service.name : undefined}
+        >
+          <service.icon size={15} className={`${service.textColor} shrink-0`} />
+          {!isCollapsed && (
+            <span className={`text-xs font-semibold truncate flex-1 ${service.textColor}`}>{service.name}</span>
+          )}
         </div>
       )}
 
@@ -48,14 +62,17 @@ export default function Sidebar() {
               <li key={item.path}>
                 <NavLink
                   to={item.path}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  title={isCollapsed ? item.label : undefined}
+                  className={`flex items-center rounded-lg text-sm font-medium transition-colors overflow-hidden ${
+                    isCollapsed ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'
+                  } ${
                     isActive
                       ? 'bg-blue-50 text-blue-700'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                   }`}
                 >
-                  <Icon size={18} className={isActive ? 'text-blue-600' : 'text-gray-400'} />
-                  <span className="truncate">{item.label}</span>
+                  <Icon size={18} className={`shrink-0 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
+                  {!isCollapsed && <span className="truncate">{item.label}</span>}
                 </NavLink>
               </li>
             );
@@ -63,14 +80,35 @@ export default function Sidebar() {
         </ul>
       </nav>
 
-      {/* Home button */}
-      <div className="border-t border-gray-100 p-3">
+      {/* Home + Toggle button */}
+      <div className="border-t border-gray-100 p-2 flex flex-col gap-1">
         <button
           onClick={goHome}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-800 transition-colors"
+          title={isCollapsed ? 'На главную' : undefined}
+          className={`w-full flex items-center rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-800 transition-colors ${
+            isCollapsed ? 'justify-center px-2 py-2' : 'gap-2 px-3 py-2'
+          }`}
         >
-          <Home size={16} className="text-gray-400" />
-          <span>На главную</span>
+          <Home size={16} className="text-gray-400 shrink-0" />
+          {!isCollapsed && <span>На главную</span>}
+        </button>
+
+        <button
+          onClick={onToggle}
+          title={isCollapsed ? 'Развернуть меню' : 'Свернуть меню'}
+          className={`w-full flex items-center rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors ${
+            isCollapsed ? 'justify-center px-2 py-2' : 'gap-2 px-3 py-2'
+          }`}
+        >
+          {isCollapsed
+            ? <ChevronRight size={16} className="shrink-0" />
+            : (
+              <>
+                <ChevronLeft size={16} className="shrink-0" />
+                <span>Свернуть</span>
+              </>
+            )
+          }
         </button>
       </div>
     </aside>
