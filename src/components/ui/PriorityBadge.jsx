@@ -1,4 +1,4 @@
-const PRIORITY_MAP = {
+export const PRIORITY_MAP = {
   high:   { cls: 'badge-red',    label: 'Высокий' },
   medium: { cls: 'badge-yellow', label: 'Средний' },
   low:    { cls: 'badge-green',  label: 'Низкий'  },

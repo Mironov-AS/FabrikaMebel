@@ -9,7 +9,7 @@ import { formatMoney } from '../../data/mockData';
 import { STATUS_LABELS } from '../../constants/statuses';
 import { WAREHOUSE_SERVICE_ID } from '../../constants/services';
 import StatusBadge from '../../components/ui/StatusBadge';
-import PriorityBadge from '../../components/ui/PriorityBadge';
+import PriorityBadge, { PRIORITY_MAP } from '../../components/ui/PriorityBadge';
 import Tab from '../../components/ui/Tabs';
 import Modal from '../../components/ui/Modal';
 import Table from '../../components/ui/Table';
