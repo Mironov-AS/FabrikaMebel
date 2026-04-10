@@ -495,7 +495,7 @@ export default function OrderDetail() {
   const counterparties = useAppStore(s => s.counterparties);
   const currentService = useAppStore(s => s.currentService);
 
-  const isWarehouse = currentService === 'warehouse';
+  const isWarehouse = currentService === 'warehouse-logistics';
 
   const [activeTab,       setActiveTab]       = useState('spec');
   const [shipmentOpen,    setShipmentOpen]    = useState(false);

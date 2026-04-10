@@ -201,7 +201,7 @@ export default function ShipmentsPage() {
 
   const { shipments, orders, contracts, counterparties, addShipment } = useAppStore();
   const currentService = useAppStore(s => s.currentService);
-  const isWarehouse = currentService === 'warehouse';
+  const isWarehouse = currentService === 'warehouse-logistics';
 
   // Only ready_for_shipment orders can be shipped
   const readyOrders = orders.filter(o => o.status === 'ready_for_shipment');

@@ -270,7 +270,7 @@ export default function OrdersList() {
   const currentService = useAppStore(s => s.currentService);
   const navigate = useNavigate();
 
-  const isWarehouse = currentService === 'warehouse';
+  const isWarehouse = currentService === 'warehouse-logistics';
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
