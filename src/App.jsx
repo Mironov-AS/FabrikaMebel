@@ -16,6 +16,7 @@ import ClaimsPage from './pages/claims/ClaimsPage';
 import ReportsPage from './pages/reports/ReportsPage';
 import ChatPage from './pages/chat/ChatPage';
 import AdminPage from './pages/admin/AdminPage';
+import CounterpartiesPage from './pages/counterparties/CounterpartiesPage';
 
 function AppRoutes() {
   const loadAll = useAppStore(s => s.loadAll);
@@ -38,6 +39,7 @@ function AppRoutes() {
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/claims" element={<ClaimsPage />} />
           <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/counterparties" element={<CounterpartiesPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -56,4 +56,20 @@ router.put('/:id', requireRole('admin', 'sales_manager', 'director'), (req, res)
   res.json(db.prepare('SELECT * FROM counterparties WHERE id = ?').get(req.params.id));
 });
 
+// DELETE /api/counterparties/:id
+router.delete('/:id', requireRole('admin', 'sales_manager', 'director'), (req, res) => {
+  const cp = db.prepare('SELECT * FROM counterparties WHERE id = ?').get(req.params.id);
+  if (!cp) return res.status(404).json({ error: 'Контрагент не найден' });
+
+  // Check if counterparty is linked to any contracts
+  const linked = db.prepare('SELECT COUNT(*) as count FROM contracts WHERE counterparty_id = ?').get(req.params.id);
+  if (linked.count > 0) {
+    return res.status(409).json({ error: 'Нельзя удалить контрагента, у которого есть договоры' });
+  }
+
+  db.prepare('DELETE FROM counterparties WHERE id = ?').run(req.params.id);
+  logAudit(req.user.id, req.user.name, `Удалён контрагент ${cp.name}`, 'Контрагент', cp.id, req.ip);
+  res.json({ success: true });
+});
+
 module.exports = router;

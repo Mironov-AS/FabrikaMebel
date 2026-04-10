@@ -168,6 +168,22 @@ const useAppStore = create((set, get) => ({
     return data;
   },
 
+  // ─── Counterparties ──────────────────────────────────────
+  addCounterparty: async (counterparty) => {
+    const { data } = await counterpartiesApi.create(counterparty);
+    set(s => ({ counterparties: [...s.counterparties, data] }));
+    return data;
+  },
+  updateCounterparty: async (id, updates) => {
+    const { data } = await counterpartiesApi.update(id, updates);
+    set(s => ({ counterparties: s.counterparties.map(c => c.id === id ? data : c) }));
+    return data;
+  },
+  deleteCounterparty: async (id) => {
+    await counterpartiesApi.delete(id);
+    set(s => ({ counterparties: s.counterparties.filter(c => c.id !== id) }));
+  },
+
   // ─── Users ───────────────────────────────────────────────
   addUser: async (user) => {
     const { data } = await usersApi.create(user);

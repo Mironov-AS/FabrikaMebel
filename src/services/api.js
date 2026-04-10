@@ -73,6 +73,7 @@ export const counterpartiesApi = {
   get: (id) => api.get(`/counterparties/${id}`),
   create: (data) => api.post('/counterparties', data),
   update: (id, data) => api.put(`/counterparties/${id}`, data),
+  delete: (id) => api.delete(`/counterparties/${id}`),
 };
 
 // Production API

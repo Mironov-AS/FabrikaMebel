@@ -2,12 +2,13 @@ import {
   TrendingUp, Factory, Truck,
   CreditCard, BarChart3, Settings, AlertCircle,
   LayoutDashboard, FileText, ShoppingCart, MessageSquare,
-  ClipboardList, PackageCheck,
+  ClipboardList, PackageCheck, Building2,
 } from 'lucide-react';
 
 export const ALL_NAV_ITEMS = [
   { label: 'Dashboard',          icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Договоры',           icon: FileText,        path: '/contracts' },
+  { label: 'Контрагенты',        icon: Building2,       path: '/counterparties' },
   { label: 'Заказы',             icon: ShoppingCart,    path: '/orders' },
   { label: 'Производство',       icon: Factory,         path: '/production' },
   { label: 'Отгрузки',           icon: Truck,           path: '/shipments' },
@@ -28,8 +29,8 @@ export const SERVICES = [
     lightBg: 'bg-blue-50',
     textColor: 'text-blue-700',
     borderColor: 'border-blue-200',
-    description: 'Договоры, заказы и чат с клиентами',
-    navPaths: ['/contracts', '/orders', '/chat'],
+    description: 'Договоры, заказы, контрагенты и чат с клиентами',
+    navPaths: ['/contracts', '/counterparties', '/orders', '/chat'],
     defaultPath: '/contracts',
   },
   {
