@@ -82,9 +82,8 @@ export default function Header() {
                   ) : (
                     notifications.map((n) => (
                       <li key={n.id} className={`px-4 py-3 text-sm ${n.read ? 'text-gray-500' : 'text-gray-800 bg-blue-50/40'}`}>
-                        <p className="font-medium">{n.title ?? n.message ?? n.text ?? 'Уведомление'}</p>
-                        {n.body && <p className="text-xs text-gray-400 mt-0.5">{n.body}</p>}
-                        {n.time && <p className="text-xs text-gray-300 mt-1">{n.time}</p>}
+                        <p className="font-medium">{n.title ?? n.text ?? 'Уведомление'}</p>
+                        {n.date && <p className="text-xs text-gray-400 mt-0.5">{n.date}</p>}
                       </li>
                     ))
                   )}

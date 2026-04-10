@@ -3,17 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Building2, Lock, User, ShieldCheck, Smartphone, Eye, EyeOff, KeyRound, ArrowLeft } from 'lucide-react';
 import useAppStore from '../store/appStore';
 import { authApi } from '../services/api';
-
-const ROLE_LABELS = {
-  admin: 'Системный администратор',
-  sales_manager: 'Менеджер по продажам',
-  accountant: 'Бухгалтер',
-  production_specialist: 'Специалист производства',
-  production_head: 'Начальник производства',
-  analyst: 'Аналитик',
-  director: 'Директор',
-  guest: 'Гость',
-};
+import { ROLE_LABELS } from '../data/mockData';
 
 // Steps: 'login' | 'mfa' | 'mfa_setup' | 'forgot' | 'reset_confirm'
 export default function LoginPage() {
