@@ -45,10 +45,13 @@ router.post('/', requireRole('admin', 'sales_manager', 'director'), (req, res) =
   const { number, contractId, counterpartyId, date, shipmentDeadline, priority, status, totalAmount, notes, specification = [] } = req.body;
   if (!number) return res.status(400).json({ error: 'Номер заказа обязателен' });
 
+  const computedTotal = specification.reduce((sum, item) => sum + (item.quantity || 0) * (item.price || 0), 0);
+  const resolvedTotal = computedTotal > 0 ? computedTotal : (totalAmount || 0);
+
   const result = db.prepare(`
     INSERT INTO orders (number, contract_id, counterparty_id, date, shipment_deadline, priority, status, total_amount, notes, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(number, contractId || null, counterpartyId || null, date, shipmentDeadline, priority || 'medium', status || 'planned', totalAmount || 0, notes || null, req.user.id);
+  `).run(number, contractId || null, counterpartyId || null, date, shipmentDeadline, priority || 'medium', status || 'planned', resolvedTotal, notes || null, req.user.id);
 
   const orderId = result.lastInsertRowid;
   for (const item of specification) {
@@ -116,6 +119,10 @@ router.put('/:id', requireRole('admin', 'sales_manager', 'director', 'production
         INSERT INTO order_items (order_id, name, article, quantity, price, category, status, shipped)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(req.params.id, item.name, item.article || null, item.quantity || 0, item.price || 0, item.category || null, item.status || 'planned', item.shipped || 0);
+    }
+    if (totalAmount === undefined) {
+      const specTotal = specification.reduce((sum, item) => sum + (item.quantity || 0) * (item.price || 0), 0);
+      db.prepare('UPDATE orders SET total_amount = ? WHERE id = ?').run(specTotal, req.params.id);
     }
   }
 
