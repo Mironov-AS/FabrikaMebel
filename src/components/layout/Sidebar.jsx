@@ -22,12 +22,15 @@ export default function Sidebar() {
   return (
     <aside className="flex flex-col fixed left-0 top-0 h-screen w-60 bg-white border-r border-gray-200 z-30">
       {/* Logo */}
-      <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
+      <button
+        onClick={goHome}
+        className="flex items-center gap-2 px-5 py-4 border-b border-gray-100 hover:bg-blue-50 transition-colors w-full text-left"
+      >
         <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
           <FileText size={16} className="text-white" />
         </div>
         <span className="text-lg font-bold text-blue-600 tracking-tight">ContractPro</span>
-      </div>
+      </button>
 
       {/* Service badge + Home button */}
       {service && (
