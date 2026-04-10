@@ -113,8 +113,8 @@ const useAppStore = create((set, get) => ({
   addShipment: async (shipment) => {
     const { data } = await shipmentsApi.create(shipment);
     set(s => ({ shipments: [data, ...s.shipments] }));
-    const res = await paymentsApi.list();
-    set({ payments: res.data });
+    const [paymentsRes, ordersRes] = await Promise.all([paymentsApi.list(), ordersApi.list()]);
+    set({ payments: paymentsRes.data, orders: ordersRes.data });
     return data;
   },
 
