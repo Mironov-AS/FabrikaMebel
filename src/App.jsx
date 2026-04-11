@@ -25,6 +25,12 @@ function LayoutWrapper() {
 
   useEffect(() => {
     loadAll();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') loadAll();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
   return (

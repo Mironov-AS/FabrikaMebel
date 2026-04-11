@@ -26,12 +26,11 @@ const useAppStore = create((set, get) => ({
   counterparties: [],
   nomenclature: NOMENCLATURE,
   isLoading: false,
-  dataLoaded: false,
   error: null,
 
-  // Load all data in parallel (called once on app start)
+  // Load all data in parallel; guarded against concurrent calls
   loadAll: async () => {
-    if (get().dataLoaded) return;
+    if (get().isLoading) return;
     set({ isLoading: true, error: null });
     try {
       const [contracts, orders, shipments, payments, claims, notifications, tasks, counterparties] = await Promise.all([
@@ -67,7 +66,6 @@ const useAppStore = create((set, get) => ({
         auditLog,
         chatMessages,
         isLoading: false,
-        dataLoaded: true,
       });
     } catch (err) {
       set({ isLoading: false, error: err.message });

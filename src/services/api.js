@@ -5,6 +5,15 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+// Prevent browser/proxy caching of GET requests
+api.interceptors.request.use((config) => {
+  if (!config.method || config.method.toLowerCase() === 'get') {
+    config.headers['Cache-Control'] = 'no-cache';
+    config.headers['Pragma'] = 'no-cache';
+  }
+  return config;
+});
+
 // Set / clear the Authorization header on the shared instance
 export function setApiAuthToken(token) {
   if (token) {

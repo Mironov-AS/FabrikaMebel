@@ -55,7 +55,6 @@ function resetStore() {
     auditLog: [],
     counterparties: [],
     isLoading: false,
-    dataLoaded: false,
     error: null,
     currentService: null,
   });
@@ -101,12 +100,11 @@ describe('loadAll', () => {
     expect(state.contracts).toEqual([{ id: 1, number: 'C-001' }]);
     expect(state.orders).toEqual([{ id: 10 }]);
     expect(state.users).toEqual([{ id: 99 }]);
-    expect(state.dataLoaded).toBe(true);
     expect(state.isLoading).toBe(false);
   });
 
-  it('does not reload if dataLoaded is true', async () => {
-    useAppStore.setState({ dataLoaded: true });
+  it('does not reload if already loading (concurrent guard)', async () => {
+    useAppStore.setState({ isLoading: true });
     await useAppStore.getState().loadAll();
     expect(contractsApi.list).not.toHaveBeenCalled();
   });

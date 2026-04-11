@@ -41,6 +41,13 @@ app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));      // tightened from 10mb
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
+// Prevent HTTP caching on all API responses
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  next();
+});
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/contracts', require('./routes/contracts'));
