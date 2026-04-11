@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import {
-  Truck, Plus, Calendar, Clock, CheckCircle, AlertCircle,
+  Truck, Calendar, Clock, CheckCircle, AlertCircle,
   PackageCheck, ChevronLeft, ChevronRight, MapPin, User,
   Phone, Printer, X, Users, Car, List,
 } from 'lucide-react';
@@ -956,13 +956,6 @@ export default function ShipmentsPage() {
               : 'Реестр отгрузок. Срок оплаты исчисляется от даты отгрузки по условиям договора.'}
           </p>
         </div>
-        <button
-          className="btn-primary flex items-center gap-2 self-start sm:self-auto"
-          onClick={() => setShowModal(true)}
-        >
-          <Plus size={15} />
-          Зарегистрировать отгрузку
-        </button>
       </div>
 
       {readyOrders.length > 0 && (
