@@ -1,15 +1,18 @@
 import { useState, useMemo } from 'react';
 import {
-  Plus, Pencil, Trash2, Search, X, AlertTriangle,
+  Plus, Pencil, Trash2, AlertTriangle,
   Package, Ban, RotateCcw, Tag, ChevronDown,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import Modal from '../../components/ui/Modal';
+import SearchInput from '../../components/ui/SearchInput';
+import ConfirmModal from '../../components/ui/ConfirmModal';
+import { useAddModal, useEditModal, useDeleteModal } from '../../hooks/useModalState';
 import { PRODUCT_CATEGORIES, NOMENCLATURE_UNITS } from '../../data/mockData';
 
 const STATUS_CONFIG = {
-  active:       { label: 'Активна',               cls: 'bg-green-100 text-green-700' },
-  discontinued: { label: 'Снята с производства',  cls: 'bg-red-100 text-red-700' },
+  active:       { label: 'Активна',              cls: 'bg-green-100 text-green-700' },
+  discontinued: { label: 'Снята с производства', cls: 'bg-red-100 text-red-700' },
 };
 
 const EMPTY_FORM = {
@@ -30,12 +33,10 @@ function validate(form) {
   return errors;
 }
 
-// ─── Form component ────────────────────────────────────────────────────────────
-
 function NomenclatureForm({ form, onChange, errors }) {
   const field = (label, key, placeholder, type = 'text', required = false) => (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <label className="label">
         {label}{required && <span className="text-red-400 ml-0.5">*</span>}
       </label>
       <input
@@ -43,9 +44,7 @@ function NomenclatureForm({ form, onChange, errors }) {
         value={form[key]}
         onChange={e => onChange(key, e.target.value)}
         placeholder={placeholder}
-        className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-          errors[key] ? 'border-red-400 bg-red-50' : 'border-gray-200'
-        }`}
+        className={`input ${errors[key] ? 'border-red-400 bg-red-50' : ''}`}
       />
       {errors[key] && <p className="text-xs text-red-600 mt-1">{errors[key]}</p>}
     </div>
@@ -56,79 +55,51 @@ function NomenclatureForm({ form, onChange, errors }) {
       <div className="grid grid-cols-2 gap-3">
         {field('Артикул', 'article', 'KO-001', 'text', true)}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Ед. измерения
-          </label>
-          <select
-            value={form.unit}
-            onChange={e => onChange('unit', e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
+          <label className="label">Ед. измерения</label>
+          <select value={form.unit} onChange={e => onChange('unit', e.target.value)} className="input">
             {NOMENCLATURE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
           </select>
         </div>
       </div>
-
       {field('Наименование', 'name', 'Кресло офисное «Комфорт»', 'text', true)}
-
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Категория</label>
-        <select
-          value={form.category}
-          onChange={e => onChange('category', e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
+        <label className="label">Категория</label>
+        <select value={form.category} onChange={e => onChange('category', e.target.value)} className="input">
           {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
-
       {field('Цена за единицу (₽)', 'price', '8500', 'number', true)}
-
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Описание</label>
+        <label className="label">Описание</label>
         <textarea
           value={form.description}
           onChange={e => onChange('description', e.target.value)}
           placeholder="Краткое описание товара..."
           rows={3}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+          className="input resize-none"
         />
       </div>
     </div>
   );
 }
 
-// ─── Main Page ─────────────────────────────────────────────────────────────────
-
 export default function NomenclaturePage() {
-  const nomenclature           = useAppStore(s => s.nomenclature);
-  const addNomenclatureItem    = useAppStore(s => s.addNomenclatureItem);
-  const updateNomenclatureItem = useAppStore(s => s.updateNomenclatureItem);
-  const deleteNomenclatureItem = useAppStore(s => s.deleteNomenclatureItem);
+  const nomenclature                = useAppStore(s => s.nomenclature);
+  const addNomenclatureItem         = useAppStore(s => s.addNomenclatureItem);
+  const updateNomenclatureItem      = useAppStore(s => s.updateNomenclatureItem);
+  const deleteNomenclatureItem      = useAppStore(s => s.deleteNomenclatureItem);
   const discontinueNomenclatureItem = useAppStore(s => s.discontinueNomenclatureItem);
   const restoreNomenclatureItem     = useAppStore(s => s.restoreNomenclatureItem);
 
-  const [search,          setSearch]          = useState('');
-  const [categoryFilter,  setCategoryFilter]  = useState('');
-  const [statusFilter,    setStatusFilter]    = useState('');
+  const [search, setSearch]                 = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [statusFilter, setStatusFilter]     = useState('');
 
-  // Add modal
-  const [showAdd,      setShowAdd]      = useState(false);
-  const [addForm,      setAddForm]      = useState(EMPTY_FORM);
-  const [addErrors,    setAddErrors]    = useState({});
+  const addModal         = useAddModal(EMPTY_FORM);
+  const editModal        = useEditModal(EMPTY_FORM);
+  const deleteModal      = useDeleteModal();
+  const discontinueModal = useDeleteModal(); // reuse for discontinue confirm
 
-  // Edit modal
-  const [editTarget,   setEditTarget]   = useState(null);
-  const [editForm,     setEditForm]     = useState(EMPTY_FORM);
-  const [editErrors,   setEditErrors]   = useState({});
-
-  // Delete confirm modal
-  const [deleteTarget, setDeleteTarget] = useState(null);
-
-  // Discontinue confirm modal
-  const [discontinueTarget, setDiscontinueTarget] = useState(null);
-
-  // ── Filtering ─────────────────────────────────────────────
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return nomenclature.filter(n => {
@@ -148,61 +119,29 @@ export default function NomenclaturePage() {
     discontinued: nomenclature.filter(n => n.status === 'discontinued').length,
   }), [nomenclature]);
 
-  // ── Add handlers ──────────────────────────────────────────
-  function openAdd() {
-    setAddForm(EMPTY_FORM);
-    setAddErrors({});
-    setShowAdd(true);
-  }
-
   function handleAdd() {
-    const errors = validate(addForm);
-    if (Object.keys(errors).length) { setAddErrors(errors); return; }
-    addNomenclatureItem({ ...addForm, price: Number(addForm.price) });
-    setShowAdd(false);
-  }
-
-  // ── Edit handlers ─────────────────────────────────────────
-  function openEdit(item) {
-    setEditTarget(item);
-    setEditForm({
-      article:     item.article     || '',
-      name:        item.name        || '',
-      category:    item.category    || PRODUCT_CATEGORIES[0],
-      unit:        item.unit        || 'шт',
-      price:       String(item.price || ''),
-      description: item.description || '',
-    });
-    setEditErrors({});
+    const errors = validate(addModal.form);
+    if (Object.keys(errors).length) { addModal.setErrors(errors); return; }
+    addNomenclatureItem({ ...addModal.form, price: Number(addModal.form.price) });
+    addModal.close();
   }
 
   function handleEdit() {
-    const errors = validate(editForm);
-    if (Object.keys(errors).length) { setEditErrors(errors); return; }
-    updateNomenclatureItem(editTarget.id, { ...editForm, price: Number(editForm.price) });
-    setEditTarget(null);
+    const errors = validate(editModal.form);
+    if (Object.keys(errors).length) { editModal.setErrors(errors); return; }
+    updateNomenclatureItem(editModal.target.id, { ...editModal.form, price: Number(editModal.form.price) });
+    editModal.close();
   }
 
-  // ── Delete handlers ───────────────────────────────────────
   function handleDelete() {
-    deleteNomenclatureItem(deleteTarget.id);
-    setDeleteTarget(null);
+    deleteNomenclatureItem(deleteModal.target.id);
+    deleteModal.close();
   }
 
-  // ── Discontinue/restore handlers ──────────────────────────
   function handleDiscontinue() {
-    discontinueNomenclatureItem(discontinueTarget.id);
-    setDiscontinueTarget(null);
+    discontinueNomenclatureItem(discontinueModal.target.id);
+    discontinueModal.close();
   }
-
-  function handleRestore(item) {
-    restoreNomenclatureItem(item.id);
-  }
-
-  const formChange = (setter, errSetter) => (key, val) => {
-    setter(f => ({ ...f, [key]: val }));
-    errSetter(e => ({ ...e, [key]: undefined }));
-  };
 
   return (
     <div className="p-6 space-y-6">
@@ -212,10 +151,7 @@ export default function NomenclaturePage() {
           <h1 className="text-xl font-bold text-gray-900">Номенклатура</h1>
           <p className="text-sm text-gray-500 mt-0.5">Управление справочником производимых товаров</p>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
+        <button onClick={addModal.open} className="btn-primary flex items-center gap-2">
           <Plus size={16} />
           Добавить позицию
         </button>
@@ -254,40 +190,29 @@ export default function NomenclaturePage() {
 
       {/* Filters */}
       <div className="flex gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Поиск по наименованию, артикулу..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          {search && (
-            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              <X size={14} />
-            </button>
-          )}
-        </div>
-
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Поиск по наименованию, артикулу..."
+          className="flex-1 min-w-48"
+        />
         <div className="relative">
           <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <select
             value={categoryFilter}
             onChange={e => setCategoryFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white appearance-none"
+            className="input w-auto pr-8 appearance-none"
           >
             <option value="">Все категории</option>
             {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
-
         <div className="relative">
           <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white appearance-none"
+            className="input w-auto pr-8 appearance-none"
           >
             <option value="">Все статусы</option>
             <option value="active">Активные</option>
@@ -297,8 +222,8 @@ export default function NomenclaturePage() {
       </div>
 
       {/* Count */}
-      <div className="flex items-center gap-3 text-sm text-gray-500">
-        <span>Показано: <strong className="text-gray-900">{filtered.length}</strong> из {nomenclature.length}</span>
+      <div className="text-sm text-gray-500">
+        Показано: <strong className="text-gray-900">{filtered.length}</strong> из {nomenclature.length}
       </div>
 
       {/* Table */}
@@ -309,7 +234,7 @@ export default function NomenclaturePage() {
             {search || categoryFilter || statusFilter ? 'Ничего не найдено' : 'Номенклатура пуста'}
           </p>
           {!search && !categoryFilter && !statusFilter && (
-            <button onClick={openAdd} className="mt-3 text-indigo-600 text-sm hover:underline">
+            <button onClick={addModal.open} className="mt-3 text-indigo-600 text-sm hover:underline">
               Добавить первую позицию
             </button>
           )}
@@ -355,7 +280,14 @@ export default function NomenclaturePage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 justify-end">
                         <button
-                          onClick={() => openEdit(item)}
+                          onClick={() => editModal.open(item, it => ({
+                            article:     it.article     || '',
+                            name:        it.name        || '',
+                            category:    it.category    || PRODUCT_CATEGORIES[0],
+                            unit:        it.unit        || 'шт',
+                            price:       String(it.price || ''),
+                            description: it.description || '',
+                          }))}
                           className="p-1.5 rounded-lg text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
                           title="Редактировать"
                         >
@@ -363,7 +295,7 @@ export default function NomenclaturePage() {
                         </button>
                         {isDiscontinued ? (
                           <button
-                            onClick={() => handleRestore(item)}
+                            onClick={() => restoreNomenclatureItem(item.id)}
                             className="p-1.5 rounded-lg text-gray-400 hover:bg-green-50 hover:text-green-600 transition-colors"
                             title="Восстановить в производство"
                           >
@@ -371,7 +303,7 @@ export default function NomenclaturePage() {
                           </button>
                         ) : (
                           <button
-                            onClick={() => setDiscontinueTarget(item)}
+                            onClick={() => discontinueModal.open(item)}
                             className="p-1.5 rounded-lg text-gray-400 hover:bg-orange-50 hover:text-orange-600 transition-colors"
                             title="Снять с производства"
                           >
@@ -379,7 +311,7 @@ export default function NomenclaturePage() {
                           </button>
                         )}
                         <button
-                          onClick={() => setDeleteTarget(item)}
+                          onClick={() => deleteModal.open(item)}
                           className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
                           title="Удалить"
                         >
@@ -397,139 +329,60 @@ export default function NomenclaturePage() {
 
       {/* Add Modal */}
       <Modal
-        isOpen={showAdd}
-        onClose={() => setShowAdd(false)}
+        isOpen={addModal.isOpen}
+        onClose={addModal.close}
         title="Новая позиция номенклатуры"
         footer={
           <>
-            <button
-              onClick={() => setShowAdd(false)}
-              className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              Отмена
-            </button>
-            <button
-              onClick={handleAdd}
-              className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
-            >
-              Создать
-            </button>
+            <button className="btn-secondary" onClick={addModal.close}>Отмена</button>
+            <button className="btn-primary" onClick={handleAdd}>Создать</button>
           </>
         }
       >
-        <NomenclatureForm
-          form={addForm}
-          onChange={formChange(setAddForm, setAddErrors)}
-          errors={addErrors}
-        />
+        <NomenclatureForm form={addModal.form} onChange={addModal.setField} errors={addModal.errors} />
       </Modal>
 
       {/* Edit Modal */}
       <Modal
-        isOpen={!!editTarget}
-        onClose={() => setEditTarget(null)}
+        isOpen={editModal.isOpen}
+        onClose={editModal.close}
         title="Редактировать позицию"
         footer={
           <>
-            <button
-              onClick={() => setEditTarget(null)}
-              className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              Отмена
-            </button>
-            <button
-              onClick={handleEdit}
-              className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
-            >
-              Сохранить
-            </button>
+            <button className="btn-secondary" onClick={editModal.close}>Отмена</button>
+            <button className="btn-primary" onClick={handleEdit}>Сохранить</button>
           </>
         }
       >
-        <NomenclatureForm
-          form={editForm}
-          onChange={formChange(setEditForm, setEditErrors)}
-          errors={editErrors}
-        />
+        <NomenclatureForm form={editModal.form} onChange={editModal.setField} errors={editModal.errors} />
       </Modal>
 
-      {/* Discontinue Confirm Modal */}
-      <Modal
-        isOpen={!!discontinueTarget}
-        onClose={() => setDiscontinueTarget(null)}
+      {/* Discontinue Confirm */}
+      <ConfirmModal
+        isOpen={discontinueModal.isOpen}
+        onClose={discontinueModal.close}
+        onConfirm={handleDiscontinue}
         title="Снять с производства"
-        footer={
-          <>
-            <button
-              onClick={() => setDiscontinueTarget(null)}
-              className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              Отмена
-            </button>
-            <button
-              onClick={handleDiscontinue}
-              className="px-4 py-2 text-sm bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors"
-            >
-              Снять с производства
-            </button>
-          </>
-        }
-      >
-        <div className="flex gap-3">
-          <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
-            <Ban size={18} className="text-orange-600" />
-          </div>
-          <div>
-            <p className="text-sm text-gray-700">
-              Перевести позицию{' '}
-              <strong className="text-gray-900">«{discontinueTarget?.name}»</strong>{' '}
-              в статус «Снята с производства»?
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              Снятая позиция не будет доступна для выбора в новых заказах.
-              Восстановить можно в любой момент.
-            </p>
-          </div>
-        </div>
-      </Modal>
+        message={<>Перевести позицию{' '}<strong className="text-gray-900">«{discontinueModal.target?.name}»</strong>{' '}в статус «Снята с производства»?</>}
+        subMessage="Снятая позиция не будет доступна для выбора в новых заказах. Восстановить можно в любой момент."
+        confirmLabel="Снять с производства"
+        confirmClassName="bg-orange-600 hover:bg-orange-700 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm"
+        icon={Ban}
+        iconBgClass="bg-orange-100"
+        iconColorClass="text-orange-600"
+      />
 
-      {/* Delete Confirm Modal */}
-      <Modal
-        isOpen={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
+      {/* Delete Confirm */}
+      <ConfirmModal
+        isOpen={deleteModal.isOpen}
+        onClose={deleteModal.close}
+        onConfirm={handleDelete}
         title="Удалить позицию"
-        footer={
-          <>
-            <button
-              onClick={() => setDeleteTarget(null)}
-              className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              Отмена
-            </button>
-            <button
-              onClick={handleDelete}
-              className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-            >
-              Удалить
-            </button>
-          </>
-        }
-      >
-        <div className="flex gap-3">
-          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-            <AlertTriangle size={18} className="text-red-600" />
-          </div>
-          <div>
-            <p className="text-sm text-gray-700">
-              Удалить позицию{' '}
-              <strong className="text-gray-900">«{deleteTarget?.name}»</strong>?
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              Это действие необратимо. Рекомендуем использовать «Снять с производства» вместо удаления.
-            </p>
-          </div>
-        </div>
-      </Modal>
+        message={<>Удалить позицию{' '}<strong className="text-gray-900">«{deleteModal.target?.name}»</strong>?</>}
+        subMessage="Это действие необратимо. Рекомендуем использовать «Снять с производства» вместо удаления."
+        confirmLabel="Удалить"
+        icon={AlertTriangle}
+      />
     </div>
   );
 }

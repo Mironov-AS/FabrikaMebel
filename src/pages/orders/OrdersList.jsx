@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Filter, X, Trash2 } from 'lucide-react';
+import { Plus, Filter, Trash2 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { formatMoney } from '../../data/mockData';
 import { STATUS_LABELS } from '../../constants/statuses';
@@ -9,24 +9,8 @@ import StatusBadge from '../../components/ui/StatusBadge';
 import PriorityBadge, { PRIORITY_MAP } from '../../components/ui/PriorityBadge';
 import Modal from '../../components/ui/Modal';
 import Table from '../../components/ui/Table';
-
-// ─── Progress bar ─────────────────────────────────────────────────────────────
-
-function ProgressBar({ value }) {
-  const pct = Math.round(Math.min(100, Math.max(0, value)));
-  const color =
-    pct >= 80 ? 'bg-green-500' :
-    pct >= 40 ? 'bg-blue-500' :
-    'bg-gray-300';
-  return (
-    <div className="flex items-center gap-2 min-w-[100px]">
-      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs text-gray-500 w-8 text-right">{pct}%</span>
-    </div>
-  );
-}
+import SearchInput from '../../components/ui/SearchInput';
+import ProgressBar from '../../components/ui/ProgressBar';
 
 // ─── Compute completion % ─────────────────────────────────────────────────────
 
@@ -374,23 +358,12 @@ export default function OrdersList() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
         {/* Search */}
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          <input
-            className="input pl-8 pr-8"
-            placeholder="Поиск по номеру, договору, контрагенту..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <button
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              onClick={() => setSearch('')}
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Поиск по номеру, договору, контрагенту..."
+          className="flex-1 min-w-[200px] max-w-sm"
+        />
 
         {/* Status filter — hidden for warehouse since they only see ready_for_shipment */}
         {!isWarehouse && (

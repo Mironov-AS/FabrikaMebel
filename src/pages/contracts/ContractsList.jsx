@@ -1,14 +1,15 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, Upload, Search, Filter, FileText,
-  Loader2, CheckCircle, X, File,
+  Plus, Upload, Filter,
+  Loader2, CheckCircle, File,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { formatMoney, STATUS_LABELS } from '../../data/mockData';
 import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 import Table from '../../components/ui/Table';
+import SearchInput from '../../components/ui/SearchInput';
 
 // ─── Import Modal ────────────────────────────────────────────────────────────
 
@@ -352,25 +353,14 @@ export default function ContractsList() {
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            className="input pl-8"
-            placeholder="Поиск по номеру, контрагенту..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <button
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              onClick={() => setSearch('')}
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Поиск по номеру, контрагенту..."
+          className="flex-1 max-w-sm"
+        />
         <div className="relative">
-          <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <select
             className="input pl-8 pr-8 min-w-[180px]"
             value={statusFilter}
