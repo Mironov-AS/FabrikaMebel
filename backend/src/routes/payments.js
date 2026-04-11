@@ -1,6 +1,9 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole, logAudit } = require('../middleware/auth');
+const { sanitizeStr } = require('../middleware/validate');
+
+const VALID_PAYMENT_STATUSES = ['pending', 'overdue', 'paid'];
 
 const router = express.Router();
 router.use(authenticate);
@@ -38,12 +41,14 @@ router.get('/:id', (req, res) => {
 router.post('/', requireRole('admin', 'accountant', 'director'), (req, res) => {
   const { shipmentId, counterpartyId, amount, dueDate, invoiceNumber } = req.body;
 
+  const safeInvoiceNumber = invoiceNumber ? sanitizeStr(invoiceNumber) : null;
+
   const result = db.prepare(`
     INSERT INTO payments (shipment_id, counterparty_id, amount, due_date, status, invoice_number)
     VALUES (?, ?, ?, ?, 'pending', ?)
-  `).run(shipmentId || null, counterpartyId || null, amount || 0, dueDate, invoiceNumber || null);
+  `).run(shipmentId || null, counterpartyId || null, amount || 0, dueDate, safeInvoiceNumber);
 
-  logAudit(req.user.id, req.user.name, `Создан платёж ${invoiceNumber}`, 'Платёж', result.lastInsertRowid, req.ip);
+  logAudit(req.user.id, req.user.name, `Создан платёж ${safeInvoiceNumber}`, 'Платёж', result.lastInsertRowid, req.ip);
   res.status(201).json(buildPayment(db.prepare('SELECT * FROM payments WHERE id = ?').get(result.lastInsertRowid)));
 });
 
@@ -91,6 +96,12 @@ router.put('/:id', requireRole('admin', 'accountant', 'director'), (req, res) =>
 
   const { status, paidDate, penaltyDays, penaltyAmount } = req.body;
 
+  if (status !== undefined && !VALID_PAYMENT_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `Недопустимый статус. Допустимые значения: ${VALID_PAYMENT_STATUSES.join(', ')}` });
+  }
+
+  const safePaidDate = paidDate !== undefined ? sanitizeStr(paidDate) : undefined;
+
   db.prepare(`
     UPDATE payments SET
       status = COALESCE(?, status),
@@ -98,7 +109,7 @@ router.put('/:id', requireRole('admin', 'accountant', 'director'), (req, res) =>
       penalty_days = COALESCE(?, penalty_days),
       penalty_amount = COALESCE(?, penalty_amount)
     WHERE id = ?
-  `).run(status, paidDate, penaltyDays, penaltyAmount, req.params.id);
+  `).run(status, safePaidDate, penaltyDays, penaltyAmount, req.params.id);
 
   logAudit(req.user.id, req.user.name, `Обновлён платёж ${payment.invoice_number}`, 'Платёж', payment.id, req.ip);
   res.json(buildPayment(db.prepare('SELECT * FROM payments WHERE id = ?').get(req.params.id)));

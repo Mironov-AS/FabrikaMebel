@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate, requireRole, logAudit } = require('../middleware/auth');
+const { sanitizeStr } = require('../middleware/validate');
 
 const router = express.Router();
 router.use(authenticate);
@@ -45,6 +46,10 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
   const { orderId, orderNumber, counterpartyId, date, scheduledDate, invoiceNumber, amount, paymentDueDate, deliveryType, deliveryAddress, items = [] } = req.body;
   if (!invoiceNumber) return res.status(400).json({ error: 'Номер счёта обязателен' });
 
+  const safeInvoiceNumber = sanitizeStr(invoiceNumber);
+  const safeOrderNumber = orderNumber ? sanitizeStr(orderNumber) : null;
+  const safeDeliveryAddress = deliveryAddress ? sanitizeStr(deliveryAddress) : null;
+
   // Validate orderId exists if provided
   let order = null;
   if (orderId) {
@@ -80,11 +85,11 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
     INSERT INTO shipments (order_id, order_number, counterparty_id, date, scheduled_date, invoice_number, amount, status, payment_due_date, paid_amount, delivery_type, delivery_address)
     VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, 0, ?, ?)
   `).run(
-    orderId || null, orderNumber || null, counterpartyId || null,
+    orderId || null, safeOrderNumber, counterpartyId || null,
     effectiveDate, scheduledDate || null,
-    invoiceNumber, amount || 0,
+    safeInvoiceNumber, amount || 0,
     resolvedPaymentDueDate,
-    deliveryType || 'pickup', deliveryAddress || null
+    deliveryType || 'pickup', safeDeliveryAddress
   );
 
   const shipmentId = result.lastInsertRowid;
@@ -103,14 +108,14 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
   db.prepare(`
     INSERT INTO payments (shipment_id, counterparty_id, amount, due_date, status, invoice_number)
     VALUES (?, ?, ?, ?, 'pending', ?)
-  `).run(shipmentId, counterpartyId || null, amount || 0, resolvedPaymentDueDate, invoiceNumber);
+  `).run(shipmentId, counterpartyId || null, amount || 0, resolvedPaymentDueDate, safeInvoiceNumber);
 
   // Move linked order to 'scheduled_for_shipment' so it no longer appears in "ready for shipment" list
   if (orderId) {
     db.prepare("UPDATE orders SET status = 'scheduled_for_shipment' WHERE id = ? AND status = 'ready_for_shipment'").run(orderId);
   }
 
-  logAudit(req.user.id, req.user.name, `Зарегистрирована отгрузка ${invoiceNumber}`, 'Отгрузка', shipmentId, req.ip);
+  logAudit(req.user.id, req.user.name, `Зарегистрирована отгрузка ${safeInvoiceNumber}`, 'Отгрузка', shipmentId, req.ip);
   res.status(201).json(buildShipment(db.prepare('SELECT * FROM shipments WHERE id = ?').get(shipmentId)));
 });
 
@@ -138,6 +143,10 @@ router.put('/:id', requireRole('admin', 'sales_manager', 'director', 'production
 
   const { status, paidAmount, paidDate, paymentDueDate } = req.body;
 
+  const safeStatus = status !== undefined ? sanitizeStr(status) : undefined;
+  const safePaidDate = paidDate !== undefined ? sanitizeStr(paidDate) : undefined;
+  const safePaymentDueDate = paymentDueDate !== undefined ? sanitizeStr(paymentDueDate) : undefined;
+
   db.prepare(`
     UPDATE shipments SET
       status = COALESCE(?, status),
@@ -145,7 +154,7 @@ router.put('/:id', requireRole('admin', 'sales_manager', 'director', 'production
       paid_date = COALESCE(?, paid_date),
       payment_due_date = COALESCE(?, payment_due_date)
     WHERE id = ?
-  `).run(status, paidAmount, paidDate, paymentDueDate, req.params.id);
+  `).run(safeStatus, paidAmount, safePaidDate, safePaymentDueDate, req.params.id);
 
   logAudit(req.user.id, req.user.name, `Обновлена отгрузка ${shipment.invoice_number}`, 'Отгрузка', shipment.id, req.ip);
   res.json(buildShipment(db.prepare('SELECT * FROM shipments WHERE id = ?').get(req.params.id)));

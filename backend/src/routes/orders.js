@@ -24,11 +24,19 @@ function buildOrder(row) {
   if (!row) return null;
   const items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(row.id);
   return {
-    ...row,
+    id: row.id,
+    number: row.number,
+    status: row.status,
+    date: row.date,
+    priority: row.priority,
+    notes: row.notes,
     contractId: row.contract_id,
     counterpartyId: row.counterparty_id,
     shipmentDeadline: row.shipment_deadline,
     totalAmount: row.total_amount,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
     specification: items.map(i => ({
       id: i.id,
       name: i.name,

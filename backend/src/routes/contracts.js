@@ -55,15 +55,23 @@ function buildContract(row) {
   const obligations = db.prepare('SELECT * FROM contract_obligations WHERE contract_id = ?').all(row.id);
   const versions = db.prepare('SELECT * FROM contract_versions WHERE contract_id = ? ORDER BY version_num').all(row.id);
   return {
-    ...row,
+    id: row.id,
+    number: row.number,
+    status: row.status,
+    date: row.date,
+    amount: row.amount,
+    subject: row.subject,
     counterpartyId: row.counterparty_id,
     validUntil: row.valid_until,
     paymentDelay: row.payment_delay,
     penaltyRate: row.penalty_rate,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    file: row.file_name,
     conditions: conditions.map(c => ({ id: c.id, text: c.text, fulfilled: !!c.fulfilled })),
     obligations: obligations.map(o => ({ id: o.id, party: o.party, text: o.text, deadline: o.deadline, status: o.status })),
     versions: versions.map(v => ({ version: v.version_num, date: v.date, author: v.author, changes: v.changes })),
-    file: row.file_name,
   };
 }
 
