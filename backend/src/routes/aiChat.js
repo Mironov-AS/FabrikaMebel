@@ -9,7 +9,19 @@ router.use(authenticate);
 function getClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY не задан в .env');
-  return new Anthropic.default({ apiKey });
+
+  // Support OpenRouter keys (sk-or-v1-...) via compatible API endpoint
+  const isOpenRouter = apiKey.startsWith('sk-or-v1-');
+  const options = { apiKey };
+  if (isOpenRouter) {
+    // Anthropic SDK appends /v1 automatically, so base = /api (not /api/v1)
+    options.baseURL = 'https://openrouter.ai/api';
+    options.defaultHeaders = {
+      'HTTP-Referer': 'https://contractpro.local',
+      'X-Title': 'ContractPro AI Assistant',
+    };
+  }
+  return new Anthropic.default(options);
 }
 
 function buildSystemPrompt() {
@@ -161,8 +173,8 @@ router.post('/', async (req, res) => {
     ];
 
     const stream = await client.messages.stream({
-      model: 'claude-opus-4-6',
-      max_tokens: 2048,
+      model: process.env.ANTHROPIC_MODEL || 'claude-opus-4-6',
+      max_tokens: 900,
       system: systemPrompt,
       messages,
     });
