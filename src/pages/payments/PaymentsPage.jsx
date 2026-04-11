@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CreditCard, AlertCircle, Clock, CheckCircle,
   ChevronDown, ChevronRight, Building2, FileText,
@@ -343,7 +343,7 @@ export default function PaymentsPage() {
 
       {/* View toggle */}
       <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
-        {[['grouped', 'По контрагентам'], ['flat', 'Все счета']].map(([key, label]) => (
+        {[['grouped', 'По контрагентам'], ['orders', 'По заказам'], ['flat', 'Все счета']].map(([key, label]) => (
           <button
             key={key}
             className={`px-4 py-1.5 text-sm rounded-md font-medium transition-colors ${viewMode === key ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
@@ -471,6 +471,187 @@ export default function PaymentsPage() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── ORDERS VIEW ──────────────────────────────────────────────── */}
+      {viewMode === 'orders' && (
+        <div className="card p-0 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  {['Заказ', 'Контрагент', 'Договор', 'Статус заказа', 'Сумма заказа', 'Счёт', 'Оплачено', 'Остаток', 'Срок', 'Статус оплаты', ''].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {orders.length === 0 ? (
+                  <tr><td colSpan={11} className="px-4 py-10 text-center text-gray-400">Нет заказов</td></tr>
+                ) : orders.map(order => {
+                  const inv = orderInvoice(order.id);
+                  const contract = contracts.find(c => c.id === order.contractId);
+                  const cp = counterparties.find(c => c.id === order.counterpartyId);
+                  const remaining = inv ? Math.max(0, inv.amount - inv.paidAmount) : 0;
+                  const overdue = inv?.status === 'overdue';
+                  const isExp = expandedOrders.has(order.id);
+                  return (
+                    <React.Fragment key={order.id}>
+                      <tr
+                        className={`border-b border-gray-100 transition-colors ${inv ? 'cursor-pointer' : ''} ${isExp ? 'bg-indigo-50/40' : overdue ? 'bg-red-50' : 'hover:bg-gray-50'}`}
+                        onClick={() => inv && toggleOrder(order.id)}
+                      >
+                        {/* Order number */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            {inv
+                              ? isExp
+                                ? <ChevronDown size={14} className="text-indigo-400 flex-shrink-0" />
+                                : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />
+                              : <span className="inline-block w-3.5" />}
+                            <div>
+                              <div className="font-medium text-gray-900">{order.number}</div>
+                              <div className="text-xs text-gray-400">от {order.date}</div>
+                            </div>
+                          </div>
+                        </td>
+                        {/* Counterparty */}
+                        <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{cp?.name ?? '—'}</td>
+                        {/* Contract */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {contract
+                            ? <div>
+                                <div className="font-medium text-gray-800">{contract.number}</div>
+                                <div className="text-xs text-gray-400 truncate max-w-[180px]">{contract.subject}</div>
+                              </div>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                        {/* Order status */}
+                        <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={order.status} /></td>
+                        {/* Order amount */}
+                        <td className="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">
+                          {formatMoney(order.totalAmount || order.total_amount || 0)}
+                        </td>
+                        {/* Invoice */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {inv
+                            ? <div className="flex items-center gap-1.5 text-gray-700">
+                                <Receipt size={13} className="text-gray-400" />
+                                <span className="font-medium">{inv.invoiceNumber}</span>
+                              </div>
+                            : <button
+                                className="flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 font-medium"
+                                onClick={e => { e.stopPropagation(); setCreateInvoiceFor(order); }}
+                              >
+                                <Plus size={13} /> Создать счёт
+                              </button>}
+                        </td>
+                        {/* Paid */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {inv
+                            ? inv.paidAmount > 0
+                              ? <span className="text-green-700 font-medium">{formatMoney(inv.paidAmount)}</span>
+                              : <span className="text-gray-300">—</span>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                        {/* Remaining */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {inv
+                            ? remaining > 0
+                              ? <span className={`${overdue ? 'text-red-500' : 'text-orange-600'} font-medium`}>{formatMoney(remaining)}</span>
+                              : <span className="text-green-600 text-xs font-medium flex items-center gap-1"><CheckCircle size={12} /> Оплачен</span>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                        {/* Due date */}
+                        <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                          {inv?.dueDate
+                            ? <span className={overdue ? 'text-red-600 font-medium' : ''}>
+                                {inv.dueDate}
+                                {overdue && <span className="ml-1 text-xs">({daysDiff(inv.dueDate)} дн.)</span>}
+                              </span>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                        {/* Payment status */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {inv
+                            ? <InvoiceBadge status={inv.status} />
+                            : <span className="text-gray-300 text-xs">Нет счёта</span>}
+                        </td>
+                        {/* Action */}
+                        <td className="px-4 py-3 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                          {inv && inv.status !== 'paid' && (
+                            <button
+                              className="btn-secondary text-xs py-1 px-2"
+                              onClick={() => setAddPaymentFor(inv)}
+                            >
+                              + Оплата
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Expanded installments */}
+                      {isExp && inv && (
+                        <>
+                          <tr className="bg-indigo-50/30 border-b border-indigo-100/50">
+                            <td className="pl-10 pr-3 py-2 text-xs text-gray-500" colSpan={5}>
+                              {inv.invoiceDate && (
+                                <span className="mr-4">
+                                  <span className="font-medium text-gray-700">Дата счёта:</span>{' '}
+                                  <span className="text-gray-700">{inv.invoiceDate}</span>
+                                </span>
+                              )}
+                              <span className="font-medium text-gray-700">Срок оплаты:</span>{' '}
+                              <span className={overdue ? 'text-red-600 font-medium' : 'text-gray-700'}>
+                                {inv.dueDate || '—'}
+                                {overdue && ` (просрочено ${daysDiff(inv.dueDate)} дн.)`}
+                              </span>
+                              {overdue && (
+                                <span className="ml-3 text-red-500 font-medium">
+                                  Штраф ≈ {formatMoney(calcPenalty(inv))}
+                                </span>
+                              )}
+                            </td>
+                            <td colSpan={6} />
+                          </tr>
+                          {inv.installments?.length > 0 ? inv.installments.map(inst => (
+                            <tr key={`inst-${inst.id}`} className="border-b border-gray-100 text-xs bg-indigo-50/20">
+                              <td className="pl-10 pr-3 py-2.5" colSpan={4}>
+                                <div className="flex items-center gap-1.5 text-gray-500">
+                                  <span className="text-gray-300 text-base leading-none">└</span>
+                                  <CheckCircle size={11} className="text-green-500" />
+                                  <span>Оплата от {inst.paidDate}</span>
+                                  {inst.notes && <span className="text-gray-400 italic">— {inst.notes}</span>}
+                                </div>
+                              </td>
+                              <td className="px-4 py-2.5 font-semibold text-green-700">{formatMoney(inst.amount)}</td>
+                              <td colSpan={5} />
+                              <td className="px-4 py-2.5 text-right">
+                                <button
+                                  className="text-red-400 hover:text-red-600 transition-colors"
+                                  title="Отменить оплату"
+                                  onClick={e => { e.stopPropagation(); handleDeletePayment(inv.id, inst.id); }}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          )) : (
+                            <tr className="border-b border-gray-100 text-xs bg-indigo-50/20">
+                              <td className="pl-10 pr-3 py-2.5 text-gray-400 italic" colSpan={11}>Платежей ещё нет</td>
+                            </tr>
+                          )}
+                        </>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
