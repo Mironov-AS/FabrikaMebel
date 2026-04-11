@@ -90,9 +90,9 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
     }
   }
 
-  // Mark the linked order as ready_for_shipment (if not already in a later status)
+  // Mark the linked order as shipped
   if (orderId) {
-    db.prepare("UPDATE orders SET status = 'ready_for_shipment' WHERE id = ? AND status NOT IN ('ready_for_shipment', 'shipped', 'completed')").run(orderId);
+    db.prepare("UPDATE orders SET status = 'shipped' WHERE id = ? AND status NOT IN ('shipped', 'completed')").run(orderId);
   }
 
   // Auto-create payment record
