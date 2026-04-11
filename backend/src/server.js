@@ -62,6 +62,7 @@ app.use('/api/audit', require('./routes/audit'));
 app.use('/api/counterparties', require('./routes/counterparties'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/ai-chat', require('./routes/aiChat'));
+app.use('/api/llm-config', require('./routes/llmConfig'));
 
 // Health check
 app.get('/api/health', (req, res) => {

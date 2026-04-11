@@ -1,7 +1,9 @@
 const express = require('express');
 const https = require('https');
+const Anthropic = require('@anthropic-ai/sdk');
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
+const { readConfig } = require('./llmConfig');
 
 const router = express.Router();
 router.use(authenticate);
@@ -136,7 +138,7 @@ ${production.map(p =>
 ).join('\n') || 'Нет данных'}`;
 }
 
-// Build Yandex message array from history + current message
+// ── Yandex GPT streaming ──────────────────────────────────────────────────────
 function buildYandexMessages(systemPrompt, history, userMessage) {
   const messages = [{ role: 'system', text: systemPrompt }];
   for (const m of history) {
@@ -146,12 +148,11 @@ function buildYandexMessages(systemPrompt, history, userMessage) {
   return messages;
 }
 
-// POST to Yandex streaming endpoint, returns async iterator of text deltas
-function yandexStream(apiKey, folderId, messages) {
+function yandexStream(apiKey, folderId, modelUri, messages, temperature, maxTokens) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
-      modelUri: `gpt://${folderId}/yandexgpt/latest`,
-      completionOptions: { stream: true, temperature: 0.6, maxTokens: 4000 },
+      modelUri,
+      completionOptions: { stream: true, temperature, maxTokens },
       messages,
     });
 
@@ -165,9 +166,7 @@ function yandexStream(apiKey, folderId, messages) {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
       },
-    }, (res) => {
-      resolve(res);
-    });
+    }, (res) => { resolve(res); });
 
     req.on('error', reject);
     req.write(body);
@@ -175,23 +174,216 @@ function yandexStream(apiKey, folderId, messages) {
   });
 }
 
-// GET /api/ai-chat/status — check if API key is configured
+async function handleYandex(res, pCfg, systemPrompt, history, message) {
+  if (!pCfg.apiKey || !pCfg.folderId) {
+    res.write(`data: ${JSON.stringify({ error: 'YANDEX_API_KEY или YANDEX_FOLDER_ID не заданы' })}\n\n`);
+    return res.end();
+  }
+
+  const modelUri = `gpt://${pCfg.folderId}/${pCfg.model || 'yandexgpt/latest'}`;
+  const messages = buildYandexMessages(systemPrompt, history, message);
+  const httpRes = await yandexStream(
+    pCfg.apiKey, pCfg.folderId, modelUri, messages,
+    pCfg.temperature ?? 0.6, pCfg.maxTokens ?? 4000
+  );
+
+  if (httpRes.statusCode !== 200) {
+    let errBody = '';
+    httpRes.on('data', (c) => { errBody += c; });
+    httpRes.on('end', () => {
+      let errMsg = 'Ошибка Yandex API';
+      try { errMsg = JSON.parse(errBody).error?.message || errMsg; } catch (_) {}
+      res.write(`data: ${JSON.stringify({ error: errMsg })}\n\n`);
+      res.end();
+    });
+    return;
+  }
+
+  let prevText = '';
+  let buffer = '';
+
+  httpRes.on('data', (chunk) => {
+    buffer += chunk.toString('utf8');
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const json = JSON.parse(trimmed);
+        const currentText = json.result?.alternatives?.[0]?.message?.text ?? '';
+        const delta = currentText.slice(prevText.length);
+        if (delta) res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
+        prevText = currentText;
+      } catch (_) {}
+    }
+  });
+
+  httpRes.on('end', () => {
+    if (buffer.trim()) {
+      try {
+        const json = JSON.parse(buffer.trim());
+        const currentText = json.result?.alternatives?.[0]?.message?.text ?? '';
+        const delta = currentText.slice(prevText.length);
+        if (delta) res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
+      } catch (_) {}
+    }
+    res.write('data: [DONE]\n\n');
+    res.end();
+  });
+
+  httpRes.on('error', (err) => {
+    res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+    res.end();
+  });
+}
+
+// ── Anthropic Claude streaming ────────────────────────────────────────────────
+async function handleAnthropic(res, pCfg, systemPrompt, history, message) {
+  if (!pCfg.apiKey) {
+    res.write(`data: ${JSON.stringify({ error: 'Anthropic API Key не задан' })}\n\n`);
+    return res.end();
+  }
+
+  const client = new Anthropic({ apiKey: pCfg.apiKey });
+  const messages = [];
+  for (const m of history) {
+    messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content });
+  }
+  messages.push({ role: 'user', content: message });
+
+  const stream = client.messages.stream({
+    model: pCfg.model || 'claude-sonnet-4-6',
+    max_tokens: pCfg.maxTokens ?? 4000,
+    system: systemPrompt,
+    messages,
+    temperature: pCfg.temperature ?? 0.7,
+  });
+
+  stream.on('text', (text) => {
+    res.write(`data: ${JSON.stringify({ text })}\n\n`);
+  });
+
+  stream.on('error', (err) => {
+    res.write(`data: ${JSON.stringify({ error: err.message || 'Ошибка Anthropic API' })}\n\n`);
+    res.end();
+  });
+
+  stream.on('end', () => {
+    res.write('data: [DONE]\n\n');
+    res.end();
+  });
+}
+
+// ── OpenAI-compatible streaming ───────────────────────────────────────────────
+function openAIStream(apiKey, baseUrl, model, messages, temperature, maxTokens) {
+  return new Promise((resolve, reject) => {
+    const url = new URL((baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '') + '/chat/completions');
+    const body = JSON.stringify({
+      model,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+      stream: true,
+    });
+
+    const req = https.request({
+      hostname: url.hostname,
+      path: url.pathname,
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    }, (res) => { resolve(res); });
+
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+async function handleOpenAI(res, pCfg, systemPrompt, history, message) {
+  if (!pCfg.apiKey) {
+    res.write(`data: ${JSON.stringify({ error: 'OpenAI API Key не задан' })}\n\n`);
+    return res.end();
+  }
+
+  const messages = [{ role: 'system', content: systemPrompt }];
+  for (const m of history) {
+    messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content });
+  }
+  messages.push({ role: 'user', content: message });
+
+  const httpRes = await openAIStream(
+    pCfg.apiKey,
+    pCfg.baseUrl,
+    pCfg.model || 'gpt-4o',
+    messages,
+    pCfg.temperature ?? 0.7,
+    pCfg.maxTokens ?? 4000
+  );
+
+  if (httpRes.statusCode !== 200) {
+    let errBody = '';
+    httpRes.on('data', (c) => { errBody += c; });
+    httpRes.on('end', () => {
+      let errMsg = `OpenAI API HTTP ${httpRes.statusCode}`;
+      try { errMsg = JSON.parse(errBody).error?.message || errMsg; } catch (_) {}
+      res.write(`data: ${JSON.stringify({ error: errMsg })}\n\n`);
+      res.end();
+    });
+    return;
+  }
+
+  let buffer = '';
+
+  httpRes.on('data', (chunk) => {
+    buffer += chunk.toString('utf8');
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === 'data: [DONE]') continue;
+      const dataPart = trimmed.startsWith('data: ') ? trimmed.slice(6) : trimmed;
+      try {
+        const json = JSON.parse(dataPart);
+        const delta = json.choices?.[0]?.delta?.content;
+        if (delta) res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
+      } catch (_) {}
+    }
+  });
+
+  httpRes.on('end', () => {
+    res.write('data: [DONE]\n\n');
+    res.end();
+  });
+
+  httpRes.on('error', (err) => {
+    res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+    res.end();
+  });
+}
+
+// ── GET /api/ai-chat/status ───────────────────────────────────────────────────
 router.get('/status', (req, res) => {
-  const configured = !!(process.env.YANDEX_API_KEY?.trim());
-  res.json({ configured });
+  const config = readConfig();
+  const provider = config.activeProvider || 'yandex';
+  const pCfg = config.providers?.[provider] || {};
+
+  let configured = false;
+  if (provider === 'yandex') configured = !!(pCfg.apiKey?.trim() && pCfg.folderId?.trim());
+  else if (provider === 'anthropic') configured = !!(pCfg.apiKey?.trim());
+  else if (provider === 'openai') configured = !!(pCfg.apiKey?.trim());
+
+  res.json({ configured, provider, model: pCfg.model });
 });
 
-// POST /api/ai-chat — streaming SSE response
+// ── POST /api/ai-chat — streaming SSE ────────────────────────────────────────
 router.post('/', async (req, res) => {
   const { message, history = [] } = req.body;
   if (!message) return res.status(400).json({ error: 'Сообщение обязательно' });
-
-  const apiKey = process.env.YANDEX_API_KEY;
-  const folderId = process.env.YANDEX_FOLDER_ID;
-
-  if (!apiKey || !folderId) {
-    return res.status(500).json({ error: 'YANDEX_API_KEY или YANDEX_FOLDER_ID не заданы в .env' });
-  }
 
   // SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
@@ -201,72 +393,21 @@ router.post('/', async (req, res) => {
   res.flushHeaders();
 
   try {
+    const config = readConfig();
+    const provider = config.activeProvider || 'yandex';
+    const pCfg = config.providers?.[provider] || {};
     const systemPrompt = buildSystemPrompt();
-    const messages = buildYandexMessages(systemPrompt, history, message);
 
-    const httpRes = await yandexStream(apiKey, folderId, messages);
-
-    if (httpRes.statusCode !== 200) {
-      let errBody = '';
-      httpRes.on('data', (chunk) => { errBody += chunk; });
-      httpRes.on('end', () => {
-        let errMsg = 'Ошибка Yandex API';
-        try {
-          const parsed = JSON.parse(errBody);
-          errMsg = parsed.error?.message || errMsg;
-        } catch (_) {}
-        res.write(`data: ${JSON.stringify({ error: errMsg })}\n\n`);
-        res.end();
-      });
-      return;
+    if (provider === 'yandex') {
+      await handleYandex(res, pCfg, systemPrompt, history, message);
+    } else if (provider === 'anthropic') {
+      await handleAnthropic(res, pCfg, systemPrompt, history, message);
+    } else if (provider === 'openai') {
+      await handleOpenAI(res, pCfg, systemPrompt, history, message);
+    } else {
+      res.write(`data: ${JSON.stringify({ error: `Провайдер "${provider}" не поддерживается` })}\n\n`);
+      res.end();
     }
-
-    let prevText = '';
-    let buffer = '';
-
-    httpRes.on('data', (chunk) => {
-      buffer += chunk.toString('utf8');
-      const lines = buffer.split('\n');
-      buffer = lines.pop(); // keep incomplete last line
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          const json = JSON.parse(trimmed);
-          const currentText = json.result?.alternatives?.[0]?.message?.text ?? '';
-          const delta = currentText.slice(prevText.length);
-          if (delta) {
-            res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
-          }
-          prevText = currentText;
-        } catch (_) {
-          // skip unparseable lines
-        }
-      }
-    });
-
-    httpRes.on('end', () => {
-      // flush any remaining buffer
-      if (buffer.trim()) {
-        try {
-          const json = JSON.parse(buffer.trim());
-          const currentText = json.result?.alternatives?.[0]?.message?.text ?? '';
-          const delta = currentText.slice(prevText.length);
-          if (delta) {
-            res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
-          }
-        } catch (_) {}
-      }
-      res.write('data: [DONE]\n\n');
-      res.end();
-    });
-
-    httpRes.on('error', (err) => {
-      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
-      res.end();
-    });
-
   } catch (err) {
     console.error('AI Chat error:', err);
     res.write(`data: ${JSON.stringify({ error: err.message || 'Неизвестная ошибка' })}\n\n`);
