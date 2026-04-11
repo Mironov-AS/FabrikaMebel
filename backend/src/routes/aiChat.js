@@ -1,28 +1,10 @@
 const express = require('express');
-const Anthropic = require('@anthropic-ai/sdk');
+const https = require('https');
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
-
-function getClient() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY не задан в .env');
-
-  // Support OpenRouter keys (sk-or-v1-...) via compatible API endpoint
-  const isOpenRouter = apiKey.startsWith('sk-or-v1-');
-  const options = { apiKey };
-  if (isOpenRouter) {
-    // Anthropic SDK appends /v1 automatically, so base = /api (not /api/v1)
-    options.baseURL = 'https://openrouter.ai/api';
-    options.defaultHeaders = {
-      'HTTP-Referer': 'https://contractpro.local',
-      'X-Title': 'ContractPro AI Assistant',
-    };
-  }
-  return new Anthropic.default(options);
-}
 
 function buildSystemPrompt() {
   const today = new Date().toISOString().slice(0, 10);
@@ -85,22 +67,16 @@ function buildSystemPrompt() {
   `).all();
 
   const statusLabels = {
-    // contracts
     active: 'активен', completed: 'выполнен', suspended: 'приостановлен', draft: 'черновик',
-    // orders
     planned: 'запланирован', in_production: 'в производстве',
     ready_for_shipment: 'готов к отгрузке', shipped: 'отгружен',
-    // payments
     paid: 'оплачен', overdue: 'просрочен', pending: 'ожидает оплаты',
-    // claims
     open: 'открыта', in_review: 'на рассмотрении', resolved: 'решена', closed: 'закрыта',
-    // priority
     high: 'высокий', medium: 'средний', low: 'низкий',
   };
   const t = (v) => statusLabels[v] || v || '—';
   const rub = (v) => v != null ? `${Number(v).toLocaleString('ru-RU')} ₽` : '—';
 
-  // Key metrics for quick overview
   const overduePayments = payments.filter(p => p.status === 'overdue');
   const overdueTotal = overduePayments.reduce((s, p) => s + (p.amount || 0), 0);
   const activeContracts = contracts.filter(c => c.status === 'active');
@@ -160,16 +136,62 @@ ${production.map(p =>
 ).join('\n') || 'Нет данных'}`;
 }
 
+// Build Yandex message array from history + current message
+function buildYandexMessages(systemPrompt, history, userMessage) {
+  const messages = [{ role: 'system', text: systemPrompt }];
+  for (const m of history) {
+    messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', text: m.content });
+  }
+  messages.push({ role: 'user', text: userMessage });
+  return messages;
+}
+
+// POST to Yandex streaming endpoint, returns async iterator of text deltas
+function yandexStream(apiKey, folderId, messages) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({
+      modelUri: `gpt://${folderId}/yandexgpt/latest`,
+      completionOptions: { stream: true, temperature: 0.6, maxTokens: 4000 },
+      messages,
+    });
+
+    const req = https.request({
+      hostname: 'llm.api.cloud.yandex.net',
+      path: '/foundationModels/v1/completionStream',
+      method: 'POST',
+      headers: {
+        'Authorization': `Api-Key ${apiKey}`,
+        'x-folder-id': folderId,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    }, (res) => {
+      resolve(res);
+    });
+
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
 // GET /api/ai-chat/status — check if API key is configured
 router.get('/status', (req, res) => {
-  const configured = !!(process.env.ANTHROPIC_API_KEY?.trim());
+  const configured = !!(process.env.YANDEX_API_KEY?.trim());
   res.json({ configured });
 });
 
-// POST /api/ai-chat  — streaming SSE response
+// POST /api/ai-chat — streaming SSE response
 router.post('/', async (req, res) => {
   const { message, history = [] } = req.body;
   if (!message) return res.status(400).json({ error: 'Сообщение обязательно' });
+
+  const apiKey = process.env.YANDEX_API_KEY;
+  const folderId = process.env.YANDEX_FOLDER_ID;
+
+  if (!apiKey || !folderId) {
+    return res.status(500).json({ error: 'YANDEX_API_KEY или YANDEX_FOLDER_ID не заданы в .env' });
+  }
 
   // SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
@@ -179,35 +201,75 @@ router.post('/', async (req, res) => {
   res.flushHeaders();
 
   try {
-    const client = getClient();
     const systemPrompt = buildSystemPrompt();
+    const messages = buildYandexMessages(systemPrompt, history, message);
 
-    const messages = [
-      ...history.map(m => ({ role: m.role, content: m.content })),
-      { role: 'user', content: message },
-    ];
+    const httpRes = await yandexStream(apiKey, folderId, messages);
 
-    const stream = await client.messages.stream({
-      model: process.env.ANTHROPIC_MODEL || 'claude-opus-4-6',
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages,
-    });
-
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        res.write(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`);
-      }
+    if (httpRes.statusCode !== 200) {
+      let errBody = '';
+      httpRes.on('data', (chunk) => { errBody += chunk; });
+      httpRes.on('end', () => {
+        let errMsg = 'Ошибка Yandex API';
+        try {
+          const parsed = JSON.parse(errBody);
+          errMsg = parsed.error?.message || errMsg;
+        } catch (_) {}
+        res.write(`data: ${JSON.stringify({ error: errMsg })}\n\n`);
+        res.end();
+      });
+      return;
     }
 
-    res.write('data: [DONE]\n\n');
-    res.end();
+    let prevText = '';
+    let buffer = '';
+
+    httpRes.on('data', (chunk) => {
+      buffer += chunk.toString('utf8');
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete last line
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const json = JSON.parse(trimmed);
+          const currentText = json.result?.alternatives?.[0]?.message?.text ?? '';
+          const delta = currentText.slice(prevText.length);
+          if (delta) {
+            res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
+          }
+          prevText = currentText;
+        } catch (_) {
+          // skip unparseable lines
+        }
+      }
+    });
+
+    httpRes.on('end', () => {
+      // flush any remaining buffer
+      if (buffer.trim()) {
+        try {
+          const json = JSON.parse(buffer.trim());
+          const currentText = json.result?.alternatives?.[0]?.message?.text ?? '';
+          const delta = currentText.slice(prevText.length);
+          if (delta) {
+            res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
+          }
+        } catch (_) {}
+      }
+      res.write('data: [DONE]\n\n');
+      res.end();
+    });
+
+    httpRes.on('error', (err) => {
+      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.end();
+    });
+
   } catch (err) {
     console.error('AI Chat error:', err);
-    const msg = err.status === 401
-      ? 'Неверный ANTHROPIC_API_KEY. Проверьте файл backend/.env'
-      : err.message || 'Неизвестная ошибка';
-    res.write(`data: ${JSON.stringify({ error: msg })}\n\n`);
+    res.write(`data: ${JSON.stringify({ error: err.message || 'Неизвестная ошибка' })}\n\n`);
     res.end();
   }
 });
