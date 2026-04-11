@@ -90,11 +90,6 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
     }
   }
 
-  // Mark the linked order as shipped
-  if (orderId) {
-    db.prepare("UPDATE orders SET status = 'shipped' WHERE id = ? AND status NOT IN ('shipped', 'completed')").run(orderId);
-  }
-
   // Auto-create payment record
   db.prepare(`
     INSERT INTO payments (shipment_id, counterparty_id, amount, due_date, status, invoice_number)
@@ -103,6 +98,23 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
 
   logAudit(req.user.id, req.user.name, `Зарегистрирована отгрузка ${invoiceNumber}`, 'Отгрузка', shipmentId, req.ip);
   res.status(201).json(buildShipment(db.prepare('SELECT * FROM shipments WHERE id = ?').get(shipmentId)));
+});
+
+// PUT /api/shipments/:id/confirm — logistician confirms actual delivery/shipment
+router.put('/:id/confirm', requireRole('admin', 'sales_manager', 'director', 'production_head'), (req, res) => {
+  const shipment = db.prepare('SELECT * FROM shipments WHERE id = ?').get(req.params.id);
+  if (!shipment) return res.status(404).json({ error: 'Отгрузка не найдена' });
+  if (shipment.status === 'shipped') return res.status(400).json({ error: 'Отгрузка уже подтверждена' });
+
+  db.prepare("UPDATE shipments SET status = 'shipped' WHERE id = ?").run(req.params.id);
+
+  // Move linked order to 'shipped' — awaiting payment
+  if (shipment.order_id) {
+    db.prepare("UPDATE orders SET status = 'shipped' WHERE id = ? AND status NOT IN ('shipped', 'completed')").run(shipment.order_id);
+  }
+
+  logAudit(req.user.id, req.user.name, `Подтверждена отгрузка ${shipment.invoice_number}`, 'Отгрузка', shipment.id, req.ip);
+  res.json(buildShipment(db.prepare('SELECT * FROM shipments WHERE id = ?').get(req.params.id)));
 });
 
 // PUT /api/shipments/:id

@@ -833,7 +833,7 @@ export default function ShipmentsPage() {
   const [waybillRoute, setWaybillRoute] = useState(null);
   const [deliveryRoutes, setDeliveryRoutes] = useState([]);
 
-  const { shipments, orders, contracts, counterparties, addShipment, addDriver } = useAppStore();
+  const { shipments, orders, contracts, counterparties, addShipment, addDriver, confirmShipment } = useAppStore();
   const drivers = useAppStore(s => s.drivers) || [];
   const currentService = useAppStore(s => s.currentService);
   const isWarehouse = currentService === WAREHOUSE_SERVICE_ID;
@@ -915,9 +915,13 @@ export default function ShipmentsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleConfirmShipment = async (id) => {
+    try { await confirmShipment(id); } catch (e) { console.error(e); }
+  };
+
   const tableHeaders = isWarehouse
-    ? ['Дата', 'Накладная', 'Заказ', 'Контрагент', 'Способ', 'Адрес', 'Позиции']
-    : ['Дата', 'Накладная', 'Заказ', 'Контрагент', 'Способ', 'Позиции', 'Сумма', 'Статус оплаты', 'Срок оплаты'];
+    ? ['Дата', 'Накладная', 'Заказ', 'Контрагент', 'Способ', 'Адрес', 'Позиции', 'Статус', '']
+    : ['Дата', 'Накладная', 'Заказ', 'Контрагент', 'Способ', 'Позиции', 'Сумма', 'Статус отгрузки', 'Статус оплаты', 'Срок оплаты'];
 
   return (
     <div className="p-6 space-y-5 max-w-screen-xl mx-auto">
@@ -1044,6 +1048,10 @@ export default function ShipmentsPage() {
                       {!isWarehouse && (
                         <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">{formatMoney(s.amount)}</td>
                       )}
+                      {/* Shipment status column — both views */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <StatusBadge status={s.status || 'scheduled'} />
+                      </td>
                       {!isWarehouse && (
                         <td className="px-4 py-3 whitespace-nowrap">
                           {s.paidAmount >= s.amount ? (
@@ -1070,6 +1078,23 @@ export default function ShipmentsPage() {
                               {s.paymentDueDate}
                             </span>
                           ) : '—'}
+                        </td>
+                      )}
+                      {/* Confirm button — warehouse only, for scheduled shipments */}
+                      {isWarehouse && (
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {s.status !== 'shipped' ? (
+                            <button
+                              className="inline-flex items-center gap-1.5 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 font-medium transition-colors"
+                              onClick={() => handleConfirmShipment(s.id)}
+                            >
+                              <CheckCircle size={12} /> Подтвердить отгрузку
+                            </button>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium">
+                              <CheckCircle size={12} /> Отгружено
+                            </span>
+                          )}
                         </td>
                       )}
                     </tr>

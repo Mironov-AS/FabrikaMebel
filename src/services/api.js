@@ -69,6 +69,7 @@ export const shipmentsApi = {
   get: (id) => api.get(`/shipments/${id}`),
   create: (data) => api.post('/shipments', data),
   update: (id, data) => api.put(`/shipments/${id}`, data),
+  confirm: (id) => api.put(`/shipments/${id}/confirm`),
 };
 
 // Drivers API

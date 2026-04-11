@@ -63,6 +63,21 @@ router.put('/:id/register', requireRole('admin', 'accountant', 'director'), (req
   // Also update the related shipment
   if (payment.shipment_id) {
     db.prepare('UPDATE shipments SET paid_amount = ?, paid_date = ? WHERE id = ?').run(paidAmount, paidDate, payment.shipment_id);
+
+    // If all payments for this order are now paid → move order to 'completed'
+    const shipment = db.prepare('SELECT * FROM shipments WHERE id = ?').get(payment.shipment_id);
+    if (shipment && shipment.order_id) {
+      const allShipmentIds = db.prepare('SELECT id FROM shipments WHERE order_id = ?').all(shipment.order_id).map(s => s.id);
+      if (allShipmentIds.length > 0) {
+        const placeholders = allShipmentIds.map(() => '?').join(',');
+        const unpaid = db.prepare(
+          `SELECT COUNT(*) as cnt FROM payments WHERE shipment_id IN (${placeholders}) AND status != 'paid'`
+        ).get(...allShipmentIds);
+        if (unpaid.cnt === 0) {
+          db.prepare("UPDATE orders SET status = 'completed' WHERE id = ? AND status = 'shipped'").run(shipment.order_id);
+        }
+      }
+    }
   }
 
   logAudit(req.user.id, req.user.name, `Зарегистрирован платёж по счёту ${payment.invoice_number}`, 'Платёж', payment.id, req.ip);

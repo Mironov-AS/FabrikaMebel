@@ -124,6 +124,14 @@ const useAppStore = create((set, get) => ({
     set({ payments: paymentsRes.data, orders: ordersRes.data });
     return data;
   },
+  confirmShipment: async (id) => {
+    const { data } = await shipmentsApi.confirm(id);
+    set(s => ({ shipments: s.shipments.map(sh => sh.id === id ? data : sh) }));
+    // Reload orders so the order status reflects the confirmation
+    const ordersRes = await ordersApi.list();
+    set({ orders: ordersRes.data });
+    return data;
+  },
 
   // ─── Drivers ─────────────────────────────────────────────
   addDriver: async (driverData) => {
@@ -153,6 +161,9 @@ const useAppStore = create((set, get) => ({
   registerPayment: async (id, amount, date) => {
     const { data } = await paymentsApi.register(id, amount, date);
     set(s => ({ payments: s.payments.map(p => p.id === id ? data : p) }));
+    // Reload orders — payment may have moved the order to 'completed'
+    const ordersRes = await ordersApi.list();
+    set({ orders: ordersRes.data });
     return data;
   },
 
