@@ -276,6 +276,12 @@ if (!paymentCols.includes('invoice_id')) {
   db.exec('ALTER TABLE payments ADD COLUMN invoice_id INTEGER REFERENCES invoices(id)');
 }
 
+// Add invoice_date to invoices if missing
+const invoiceCols = db.pragma('table_info(invoices)').map(c => c.name);
+if (!invoiceCols.includes('invoice_date')) {
+  db.exec('ALTER TABLE invoices ADD COLUMN invoice_date TEXT');
+}
+
 // Contract files table
 db.exec(`
   CREATE TABLE IF NOT EXISTS contract_files (

@@ -35,32 +35,49 @@ function InvoiceBadge({ status }) {
 
 // ── Create Invoice Modal ──────────────────────────────────────────────────────
 function CreateInvoiceModal({ isOpen, onClose, order, contracts, onSave }) {
-  const [form, setForm] = useState({ invoiceNumber: '', dueDate: '', notes: '' });
+  const today = new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState({ invoiceNumber: '', invoiceDate: today, dueDate: '', notes: '' });
   const [errors, setErrors] = useState({});
 
   const contract = order ? contracts.find(c => c.id === (order.contractId || order.contract_id)) : null;
   const paymentDelay = contract?.paymentDelay ?? contract?.payment_delay ?? 30;
 
+  // Recalculate due date whenever invoice date changes
+  const calcDueDate = (invoiceDate) => {
+    if (!invoiceDate) return '';
+    const base = new Date(invoiceDate);
+    base.setDate(base.getDate() + paymentDelay);
+    return base.toISOString().slice(0, 10);
+  };
+
   useEffect(() => {
     if (order && isOpen) {
-      const base = order.date ? new Date(order.date) : new Date();
-      base.setDate(base.getDate() + paymentDelay);
+      const invoiceDate = today;
       setForm({
         invoiceNumber: '',
-        dueDate: base.toISOString().slice(0, 10),
+        invoiceDate,
+        dueDate: calcDueDate(invoiceDate),
         notes: '',
       });
       setErrors({});
     }
   }, [order?.id, isOpen]);
 
+  const handleInvoiceDateChange = (e) => {
+    const invoiceDate = e.target.value;
+    setForm(f => ({ ...f, invoiceDate, dueDate: calcDueDate(invoiceDate) }));
+    setErrors(err => ({ ...err, invoiceDate: '' }));
+  };
+
   const handleSave = () => {
     const errs = {};
     if (!form.invoiceNumber.trim()) errs.invoiceNumber = 'Укажите номер счёта';
+    if (!form.invoiceDate) errs.invoiceDate = 'Укажите дату счёта';
     if (Object.keys(errs).length) { setErrors(errs); return; }
     onSave({
       orderId: order.id,
       invoiceNumber: form.invoiceNumber.trim(),
+      invoiceDate: form.invoiceDate,
       dueDate: form.dueDate || undefined,
       amount: order.totalAmount || order.total_amount || 0,
       notes: form.notes,
@@ -100,7 +117,20 @@ function CreateInvoiceModal({ isOpen, onClose, order, contracts, onSave }) {
             {errors.invoiceNumber && <p className="text-red-500 text-xs mt-1">{errors.invoiceNumber}</p>}
           </div>
           <div>
-            <label className="form-label">Срок оплаты</label>
+            <label className="form-label">Дата счёта <span className="text-red-500">*</span></label>
+            <input
+              type="date"
+              className={`form-input${errors.invoiceDate ? ' border-red-400' : ''}`}
+              value={form.invoiceDate}
+              onChange={handleInvoiceDateChange}
+            />
+            {errors.invoiceDate && <p className="text-red-500 text-xs mt-1">{errors.invoiceDate}</p>}
+          </div>
+          <div>
+            <label className="form-label">
+              Срок оплаты
+              {contract && <span className="text-gray-400 font-normal ml-1">(дата счёта + {paymentDelay} дн.)</span>}
+            </label>
             <input
               type="date" className="form-input"
               value={form.dueDate}
@@ -612,6 +642,12 @@ function OrderRow({ order, invoice, isExpanded, onToggle, onCreateInvoice, onAdd
           {/* Invoice summary row */}
           <tr className="bg-indigo-50/30 border-b border-indigo-100/50">
             <td className="pl-14 pr-3 py-2 text-xs text-gray-500" colSpan={3}>
+              {invoice.invoiceDate && (
+                <span className="mr-4">
+                  <span className="font-medium text-gray-700">Дата счёта:</span>{' '}
+                  <span className="text-gray-700">{invoice.invoiceDate}</span>
+                </span>
+              )}
               <span className="font-medium text-gray-700">Срок оплаты:</span>{' '}
               <span className={overdue ? 'text-red-600 font-medium' : 'text-gray-700'}>
                 {invoice.dueDate || '—'}

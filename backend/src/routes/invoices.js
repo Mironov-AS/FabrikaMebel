@@ -15,6 +15,7 @@ function buildInvoice(row) {
     id: row.id,
     orderId: row.order_id,
     invoiceNumber: row.invoice_number,
+    invoiceDate: row.invoice_date,
     amount: row.amount,
     paidAmount: row.paid_amount,
     status: row.status,
@@ -70,9 +71,10 @@ router.get('/:id', (req, res) => {
 
 // POST /api/invoices — create invoice for an order
 router.post('/', requireRole('admin', 'accountant', 'director', 'sales_manager'), (req, res) => {
-  const { orderId, invoiceNumber, amount, dueDate, notes } = req.body;
+  const { orderId, invoiceNumber, invoiceDate, amount, dueDate, notes } = req.body;
   if (!orderId) return res.status(400).json({ error: 'orderId обязателен' });
   if (!invoiceNumber) return res.status(400).json({ error: 'Номер счёта обязателен' });
+  if (!invoiceDate) return res.status(400).json({ error: 'Дата счёта обязательна' });
 
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
   if (!order) return res.status(404).json({ error: 'Заказ не найден' });
@@ -84,23 +86,23 @@ router.post('/', requireRole('admin', 'accountant', 'director', 'sales_manager')
   const safeInvoiceNumber = sanitizeStr(invoiceNumber);
   const safeNotes = notes ? sanitizeStr(notes) : null;
 
-  // Auto-calculate due_date from contract.payment_delay if not provided
+  // Calculate due_date: invoiceDate + contract.payment_delay (or use provided dueDate)
   let resolvedDueDate = dueDate || null;
-  if (!resolvedDueDate && order.contract_id && order.date) {
+  if (!resolvedDueDate && order.contract_id) {
     const contract = db.prepare('SELECT * FROM contracts WHERE id = ?').get(order.contract_id);
     if (contract && contract.payment_delay != null) {
-      const orderDate = new Date(order.date);
-      orderDate.setDate(orderDate.getDate() + contract.payment_delay);
-      resolvedDueDate = orderDate.toISOString().slice(0, 10);
+      const base = new Date(invoiceDate);
+      base.setDate(base.getDate() + contract.payment_delay);
+      resolvedDueDate = base.toISOString().slice(0, 10);
     }
   }
 
   const invoiceAmount = amount != null ? amount : (order.total_amount || 0);
 
   const result = db.prepare(`
-    INSERT INTO invoices (order_id, invoice_number, amount, paid_amount, status, due_date, counterparty_id, notes)
-    VALUES (?, ?, ?, 0, 'pending', ?, ?, ?)
-  `).run(orderId, safeInvoiceNumber, invoiceAmount, resolvedDueDate, order.counterparty_id || null, safeNotes);
+    INSERT INTO invoices (order_id, invoice_number, invoice_date, amount, paid_amount, status, due_date, counterparty_id, notes)
+    VALUES (?, ?, ?, ?, 0, 'pending', ?, ?, ?)
+  `).run(orderId, safeInvoiceNumber, invoiceDate, invoiceAmount, resolvedDueDate, order.counterparty_id || null, safeNotes);
 
   logAudit(req.user.id, req.user.name, `Создан счёт ${safeInvoiceNumber} для заказа #${order.number}`, 'Счёт', result.lastInsertRowid, req.ip);
   res.status(201).json(buildInvoice(db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid)));
@@ -112,18 +114,19 @@ router.put('/:id', requireRole('admin', 'accountant', 'director'), (req, res) =>
   if (!inv) return res.status(404).json({ error: 'Счёт не найден' });
   if (inv.status === 'paid') return res.status(400).json({ error: 'Нельзя редактировать оплаченный счёт' });
 
-  const { invoiceNumber, dueDate, amount, notes } = req.body;
+  const { invoiceNumber, invoiceDate, dueDate, amount, notes } = req.body;
   const safeNum = invoiceNumber !== undefined ? sanitizeStr(invoiceNumber) : undefined;
   const safeNotes = notes !== undefined ? sanitizeStr(notes) : undefined;
 
   db.prepare(`
     UPDATE invoices SET
       invoice_number = COALESCE(?, invoice_number),
+      invoice_date = COALESCE(?, invoice_date),
       due_date = COALESCE(?, due_date),
       amount = COALESCE(?, amount),
       notes = COALESCE(?, notes)
     WHERE id = ?
-  `).run(safeNum, dueDate, amount, safeNotes, req.params.id);
+  `).run(safeNum, invoiceDate, dueDate, amount, safeNotes, req.params.id);
 
   recalcInvoiceStatus(req.params.id);
   res.json(buildInvoice(db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id)));
