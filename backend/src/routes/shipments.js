@@ -96,6 +96,11 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
     VALUES (?, ?, ?, ?, 'pending', ?)
   `).run(shipmentId, counterpartyId || null, amount || 0, resolvedPaymentDueDate, invoiceNumber);
 
+  // Move linked order to 'scheduled_for_shipment' so it no longer appears in "ready for shipment" list
+  if (orderId) {
+    db.prepare("UPDATE orders SET status = 'scheduled_for_shipment' WHERE id = ? AND status = 'ready_for_shipment'").run(orderId);
+  }
+
   logAudit(req.user.id, req.user.name, `Зарегистрирована отгрузка ${invoiceNumber}`, 'Отгрузка', shipmentId, req.ip);
   res.status(201).json(buildShipment(db.prepare('SELECT * FROM shipments WHERE id = ?').get(shipmentId)));
 });

@@ -290,8 +290,8 @@ export default function OrdersList() {
   const [newOpen, setNewOpen] = useState(false);
 
   const filtered = orders.filter(o => {
-    // Warehouse only sees ready-for-shipment (not yet shipped) orders
-    if (isWarehouse && o.status !== 'ready_for_shipment') return false;
+    // Warehouse sees orders ready for shipment or already scheduled (shipment registered but not confirmed)
+    if (isWarehouse && o.status !== 'ready_for_shipment' && o.status !== 'scheduled_for_shipment') return false;
 
     const contract = contracts.find(c => c.id === o.contractId);
     const cp = counterparties.find(c => c.id === o.counterpartyId);
@@ -427,7 +427,7 @@ export default function OrdersList() {
 
       {/* Summary */}
       <p className="text-sm text-gray-500">
-        Показано: <strong className="text-gray-800">{filtered.length}</strong> из {isWarehouse ? orders.filter(o => o.status === 'ready_for_shipment').length : orders.length}
+        Показано: <strong className="text-gray-800">{filtered.length}</strong> из {isWarehouse ? orders.filter(o => o.status === 'ready_for_shipment' || o.status === 'scheduled_for_shipment').length : orders.length}
       </p>
 
       {/* Table */}

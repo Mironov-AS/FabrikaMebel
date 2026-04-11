@@ -71,7 +71,7 @@ function buildSystemPrompt() {
   const statusLabels = {
     active: 'активен', completed: 'выполнен', suspended: 'приостановлен', draft: 'черновик',
     planned: 'запланирован', in_production: 'в производстве',
-    ready_for_shipment: 'готов к отгрузке', shipped: 'отгружен',
+    ready_for_shipment: 'готов к отгрузке', scheduled_for_shipment: 'отгрузка запланирована', shipped: 'отгружен',
     paid: 'оплачен', overdue: 'просрочен', pending: 'ожидает оплаты',
     open: 'открыта', in_review: 'на рассмотрении', resolved: 'решена', closed: 'закрыта',
     high: 'высокий', medium: 'средний', low: 'низкий',

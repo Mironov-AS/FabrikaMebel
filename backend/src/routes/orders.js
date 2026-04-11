@@ -3,7 +3,7 @@ const db = require('../db');
 const { authenticate, requireRole, logAudit } = require('../middleware/auth');
 const { sanitizeStr, checkLengths } = require('../middleware/validate');
 
-const VALID_ORDER_STATUSES = ['planned', 'in_production', 'ready_for_shipment', 'shipped', 'completed'];
+const VALID_ORDER_STATUSES = ['planned', 'in_production', 'ready_for_shipment', 'scheduled_for_shipment', 'shipped', 'completed'];
 
 function validateItems(specification) {
   for (const item of specification) {

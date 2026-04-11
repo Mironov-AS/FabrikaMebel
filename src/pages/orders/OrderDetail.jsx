@@ -559,13 +559,14 @@ export default function OrderDetail() {
       {/* Business flow indicator */}
       <div className="flex items-center gap-0 text-xs overflow-x-auto pb-1">
         {[
-          { status: 'planned',            label: 'Запланирован' },
-          { status: 'in_production',      label: 'В производстве' },
-          { status: 'ready_for_shipment', label: 'Готов к отгрузке' },
-          { status: 'shipped',            label: 'Отгружен' },
-          { status: 'completed',          label: 'Завершён' },
+          { status: 'planned',                 label: 'Запланирован' },
+          { status: 'in_production',           label: 'В производстве' },
+          { status: 'ready_for_shipment',      label: 'Готов к отгрузке' },
+          { status: 'scheduled_for_shipment',  label: 'Отгрузка запланирована' },
+          { status: 'shipped',                 label: 'Отгружен' },
+          { status: 'completed',               label: 'Завершён' },
         ].map((step, idx, arr) => {
-          const statuses = ['planned', 'in_production', 'ready_for_shipment', 'shipped', 'completed'];
+          const statuses = ['planned', 'in_production', 'ready_for_shipment', 'scheduled_for_shipment', 'shipped', 'completed'];
           const currentIdx = statuses.indexOf(order.status);
           const stepIdx    = statuses.indexOf(step.status);
           const isPast     = stepIdx < currentIdx;
