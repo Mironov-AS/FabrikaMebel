@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import {
   contractsApi, ordersApi, paymentsApi, shipmentsApi,
   claimsApi, usersApi, productionApi, notificationsApi, chatApi, auditApi, counterpartiesApi,
-  nomenclatureApi, driversApi, deliveryRoutesApi,
+  nomenclatureApi, driversApi, deliveryRoutesApi, invoicesApi,
 } from '../services/api';
 import { NOMENCLATURE } from '../data/mockData';
 
@@ -16,6 +16,7 @@ const useAppStore = create((set, get) => ({
   contracts: [],
   orders: [],
   shipments: [],
+  invoices: [],
   payments: [],
   claims: [],
   notifications: [],
@@ -35,10 +36,11 @@ const useAppStore = create((set, get) => ({
     if (get().isLoading) return;
     set({ isLoading: true, error: null });
     try {
-      const [contracts, orders, shipments, payments, claims, notifications, tasks, counterparties] = await Promise.all([
+      const [contracts, orders, shipments, invoices, payments, claims, notifications, tasks, counterparties] = await Promise.all([
         contractsApi.list(),
         ordersApi.list(),
         shipmentsApi.list(),
+        invoicesApi.list(),
         paymentsApi.list(),
         claimsApi.list(),
         notificationsApi.list(),
@@ -62,6 +64,7 @@ const useAppStore = create((set, get) => ({
         contracts: contracts.data,
         orders: orders.data,
         shipments: shipments.data,
+        invoices: invoices.data,
         payments: payments.data,
         claims: claims.data,
         notifications: notifications.data,
@@ -157,15 +160,37 @@ const useAppStore = create((set, get) => ({
     return data;
   },
 
-  // ─── Payments ────────────────────────────────────────────
-  registerPayment: async (id, amount, date) => {
-    const { data } = await paymentsApi.register(id, amount, date);
-    set(s => ({ payments: s.payments.map(p => p.id === id ? data : p) }));
-    // Reload orders — payment may have moved the order to 'completed'
-    const ordersRes = await ordersApi.list();
-    set({ orders: ordersRes.data });
+  // ─── Invoices ────────────────────────────────────────────
+  createInvoice: async (invoiceData) => {
+    const { data } = await invoicesApi.create(invoiceData);
+    set(s => ({ invoices: [data, ...s.invoices] }));
     return data;
   },
+  updateInvoice: async (id, updates) => {
+    const { data } = await invoicesApi.update(id, updates);
+    set(s => ({ invoices: s.invoices.map(inv => inv.id === id ? data : inv) }));
+    return data;
+  },
+  addInvoicePayment: async (invoiceId, amount, paidDate, notes) => {
+    const { data } = await invoicesApi.addPayment(invoiceId, amount, paidDate, notes);
+    // data is the updated invoice with installments
+    set(s => ({ invoices: s.invoices.map(inv => inv.id === invoiceId ? data : inv) }));
+    // Reload orders in case invoice is now fully paid (order -> completed)
+    const ordersRes = await ordersApi.list();
+    const paymentsRes = await paymentsApi.list();
+    set({ orders: ordersRes.data, payments: paymentsRes.data });
+    return data;
+  },
+  deleteInvoicePayment: async (invoiceId, paymentId) => {
+    const { data } = await invoicesApi.deletePayment(invoiceId, paymentId);
+    set(s => ({ invoices: s.invoices.map(inv => inv.id === invoiceId ? data : inv) }));
+    const ordersRes = await ordersApi.list();
+    const paymentsRes = await paymentsApi.list();
+    set({ orders: ordersRes.data, payments: paymentsRes.data });
+    return data;
+  },
+
+  // ─── Payments ────────────────────────────────────────────
 
   // ─── Claims ──────────────────────────────────────────────
   addClaim: async (claim) => {

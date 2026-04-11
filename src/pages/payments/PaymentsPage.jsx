@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   CreditCard, AlertCircle, Clock, CheckCircle,
   ChevronDown, ChevronRight, Building2, FileText,
+  Plus, Trash2, Receipt,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { formatMoney } from '../../data/mockData';
@@ -10,43 +11,207 @@ import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 import StatCard from '../../components/ui/StatCard';
 
-const emptyPaymentForm = { amount: '', date: '', note: '' };
-
-const ORDER_PAY_STYLES = {
-  paid:        'bg-green-100 text-green-700 border border-green-200',
-  overdue:     'bg-red-100 text-red-700 border border-red-200',
-  pending:     'bg-yellow-100 text-yellow-700 border border-yellow-200',
-  partial:     'bg-blue-100 text-blue-700 border border-blue-200',
-  not_shipped: 'bg-gray-100 text-gray-500 border border-gray-200',
+// ── Status helpers ────────────────────────────────────────────────────────────
+const INV_STYLES = {
+  paid:    'bg-green-100 text-green-700 border border-green-200',
+  overdue: 'bg-red-100 text-red-700 border border-red-200',
+  partial: 'bg-blue-100 text-blue-700 border border-blue-200',
+  pending: 'bg-yellow-100 text-yellow-700 border border-yellow-200',
 };
-const ORDER_PAY_LABELS = {
-  paid:        'Оплачен',
-  overdue:     'Просрочен',
-  pending:     'Ожидается',
-  partial:     'Частично',
-  not_shipped: 'Не отгружен',
+const INV_LABELS = {
+  paid:    'Оплачен',
+  overdue: 'Просрочен',
+  partial: 'Частично',
+  pending: 'Ожидается',
 };
 
-function OrderPayBadge({ status }) {
+function InvoiceBadge({ status }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${ORDER_PAY_STYLES[status] || ORDER_PAY_STYLES.not_shipped}`}>
-      {ORDER_PAY_LABELS[status] || status}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${INV_STYLES[status] || INV_STYLES.pending}`}>
+      {INV_LABELS[status] || status}
     </span>
   );
 }
 
+// ── Create Invoice Modal ──────────────────────────────────────────────────────
+function CreateInvoiceModal({ isOpen, onClose, order, contracts, onSave }) {
+  const [form, setForm] = useState({ invoiceNumber: '', dueDate: '', notes: '' });
+  const [errors, setErrors] = useState({});
+
+  const contract = order ? contracts.find(c => c.id === (order.contractId || order.contract_id)) : null;
+  const paymentDelay = contract?.paymentDelay ?? contract?.payment_delay ?? 30;
+
+  useEffect(() => {
+    if (order && isOpen) {
+      const base = order.date ? new Date(order.date) : new Date();
+      base.setDate(base.getDate() + paymentDelay);
+      setForm({
+        invoiceNumber: '',
+        dueDate: base.toISOString().slice(0, 10),
+        notes: '',
+      });
+      setErrors({});
+    }
+  }, [order?.id, isOpen]);
+
+  const handleSave = () => {
+    const errs = {};
+    if (!form.invoiceNumber.trim()) errs.invoiceNumber = 'Укажите номер счёта';
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+    onSave({
+      orderId: order.id,
+      invoiceNumber: form.invoiceNumber.trim(),
+      dueDate: form.dueDate || undefined,
+      amount: order.totalAmount || order.total_amount || 0,
+      notes: form.notes,
+    });
+    onClose();
+  };
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Создать счёт на заказ"
+      footer={
+        <>
+          <button className="btn-secondary" onClick={onClose}>Отмена</button>
+          <button className="btn-primary" onClick={handleSave}>Создать</button>
+        </>
+      }
+    >
+      {order && (
+        <div className="space-y-4">
+          <div className="p-3 bg-gray-50 rounded-lg text-sm space-y-1">
+            <p><span className="font-medium">Заказ:</span> {order.number}</p>
+            <p><span className="font-medium">Сумма заказа:</span> {formatMoney(order.totalAmount || order.total_amount || 0)}</p>
+            {contract && (
+              <p><span className="font-medium">Отсрочка по договору:</span> {paymentDelay} дн.</p>
+            )}
+          </div>
+          <div>
+            <label className="form-label">Номер счёта <span className="text-red-500">*</span></label>
+            <input
+              className={`form-input${errors.invoiceNumber ? ' border-red-400' : ''}`}
+              placeholder="Например: СЧ-2024-001"
+              value={form.invoiceNumber}
+              onChange={e => { setForm(f => ({ ...f, invoiceNumber: e.target.value })); setErrors(e => ({ ...e, invoiceNumber: '' })); }}
+            />
+            {errors.invoiceNumber && <p className="text-red-500 text-xs mt-1">{errors.invoiceNumber}</p>}
+          </div>
+          <div>
+            <label className="form-label">Срок оплаты</label>
+            <input
+              type="date" className="form-input"
+              value={form.dueDate}
+              onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="form-label">Примечание</label>
+            <textarea
+              className="form-input resize-none" rows={2}
+              value={form.notes}
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+            />
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ── Add Payment Modal ─────────────────────────────────────────────────────────
+function AddPaymentModal({ isOpen, onClose, invoice, onSave }) {
+  const [form, setForm] = useState({ amount: '', date: new Date().toISOString().slice(0, 10), notes: '' });
+  const [errors, setErrors] = useState({});
+
+  useEffect(() => {
+    if (invoice && isOpen) {
+      const remaining = invoice.amount - invoice.paidAmount;
+      setForm({ amount: String(remaining > 0 ? remaining.toFixed(2) : ''), date: new Date().toISOString().slice(0, 10), notes: '' });
+      setErrors({});
+    }
+  }, [invoice?.id, isOpen]);
+
+  const remaining = invoice ? invoice.amount - invoice.paidAmount : 0;
+
+  const handleSave = () => {
+    const errs = {};
+    const amt = Number(form.amount);
+    if (!amt || amt <= 0) errs.amount = 'Введите корректную сумму';
+    else if (amt > remaining + 0.01) errs.amount = `Не может превышать остаток ${formatMoney(remaining)}`;
+    if (!form.date) errs.date = 'Укажите дату оплаты';
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+    onSave(invoice.id, amt, form.date, form.notes);
+    onClose();
+  };
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Зарегистрировать оплату"
+      footer={
+        <>
+          <button className="btn-secondary" onClick={onClose}>Отмена</button>
+          <button className="btn-primary" onClick={handleSave}>Сохранить</button>
+        </>
+      }
+    >
+      {invoice && (
+        <div className="space-y-4">
+          <div className="p-3 bg-gray-50 rounded-lg text-sm space-y-1">
+            <p><span className="font-medium">Счёт:</span> {invoice.invoiceNumber}</p>
+            <p><span className="font-medium">Всего по счёту:</span> {formatMoney(invoice.amount)}</p>
+            <p><span className="font-medium">Уже оплачено:</span> <span className="text-green-700">{formatMoney(invoice.paidAmount)}</span></p>
+            <p><span className="font-medium">Остаток:</span> <span className={remaining > 0 ? 'text-orange-600 font-semibold' : 'text-green-600'}>{formatMoney(remaining)}</span></p>
+          </div>
+          <div>
+            <label className="form-label">Сумма оплаты (₽) <span className="text-red-500">*</span></label>
+            <input
+              type="number" min={0.01} step={0.01}
+              className={`form-input${errors.amount ? ' border-red-400' : ''}`}
+              value={form.amount}
+              onChange={e => { setForm(f => ({ ...f, amount: e.target.value })); setErrors(e => ({ ...e, amount: '' })); }}
+            />
+            {errors.amount && <p className="text-red-500 text-xs mt-1">{errors.amount}</p>}
+          </div>
+          <div>
+            <label className="form-label">Дата оплаты <span className="text-red-500">*</span></label>
+            <input
+              type="date"
+              className={`form-input${errors.date ? ' border-red-400' : ''}`}
+              value={form.date}
+              onChange={e => { setForm(f => ({ ...f, date: e.target.value })); setErrors(e => ({ ...e, date: '' })); }}
+            />
+            {errors.date && <p className="text-red-500 text-xs mt-1">{errors.date}</p>}
+          </div>
+          <div>
+            <label className="form-label">Примечание</label>
+            <textarea
+              className="form-input resize-none" rows={2}
+              value={form.notes}
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+            />
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function PaymentsPage() {
   const [viewMode, setViewMode] = useState('grouped');
   const [expandedCps, setExpandedCps] = useState(new Set());
   const [expandedContracts, setExpandedContracts] = useState(new Set());
   const [expandedOrders, setExpandedOrders] = useState(new Set());
-  const [paymentModal, setPaymentModal] = useState(null);
-  const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
-  const [paymentFormErrors, setPaymentFormErrors] = useState({});
+  const [createInvoiceFor, setCreateInvoiceFor] = useState(null);
+  const [addPaymentFor, setAddPaymentFor] = useState(null);
 
-  const { payments, shipments, orders, contracts, counterparties, registerPayment } = useAppStore();
+  const { invoices, orders, contracts, counterparties, createInvoice, addInvoicePayment, deleteInvoicePayment } = useAppStore();
 
-  // Default: expand all counterparties and contracts
   useEffect(() => {
     if (counterparties.length > 0) setExpandedCps(new Set(counterparties.map(c => c.id)));
   }, [counterparties.length]);
@@ -54,45 +219,28 @@ export default function PaymentsPage() {
     if (contracts.length > 0) setExpandedContracts(new Set(contracts.map(c => c.id)));
   }, [contracts.length]);
 
-  // ── Helpers ──────────────────────────────────────────────────────────
-  const orderShipments = (orderId) => shipments.filter(s => s.orderId === orderId);
-  const shipmentPayments = (shipmentId) => payments.filter(p => p.shipmentId === shipmentId);
+  // ── Helpers ───────────────────────────────────────────────────────────
+  const orderInvoice = (orderId) => invoices.find(inv => inv.orderId === orderId);
 
-  const orderPaymentSummary = (order) => {
-    const shs = orderShipments(order.id);
-    if (shs.length === 0) return { status: 'not_shipped', shippedAmount: 0, paidAmount: 0, paymentRecords: [] };
-
-    const shippedAmount = shs.reduce((s, sh) => s + sh.amount, 0);
-    const paidAmount    = shs.reduce((s, sh) => s + (sh.paidAmount || 0), 0);
-    const paymentRecords = shs.flatMap(sh => shipmentPayments(sh.id).map(p => ({ ...p, shipment: sh })));
-
-    let status;
-    if (shippedAmount > 0 && paidAmount >= shippedAmount)          status = 'paid';
-    else if (paymentRecords.some(p => p.status === 'overdue'))     status = 'overdue';
-    else if (paidAmount > 0 && paidAmount < shippedAmount)         status = 'partial';
-    else if (shippedAmount > 0)                                    status = 'pending';
-    else                                                           status = 'not_shipped';
-
-    return { status, shippedAmount, paidAmount, paymentRecords };
+  const calcPenalty = (invoice) => {
+    if (invoice.status !== 'overdue') return 0;
+    const days = Math.max(0, daysDiff(invoice.dueDate));
+    return days * (invoice.amount - invoice.paidAmount) * 0.001;
   };
 
-  const calcPenalty = (payment) => {
-    if (payment.status !== 'overdue') return 0;
-    return Math.max(0, daysDiff(payment.dueDate)) * payment.amount * 0.001;
-  };
-
-  // ── Summary stats ────────────────────────────────────────────────────
+  // ── Summary stats ─────────────────────────────────────────────────────
   const TODAY = new Date();
-  const totalReceivable = payments.filter(p => p.status !== 'paid').reduce((s, p) => s + p.amount, 0);
-  const overduePayments = payments.filter(p => p.status === 'overdue');
-  const totalOverdue    = overduePayments.reduce((s, p) => s + p.amount, 0);
+  const unpaidInvoices = invoices.filter(inv => inv.status !== 'paid');
+  const totalReceivable = unpaidInvoices.reduce((s, inv) => s + Math.max(0, inv.amount - inv.paidAmount), 0);
+  const overdueInvoices = invoices.filter(inv => inv.status === 'overdue');
+  const totalOverdue    = overdueInvoices.reduce((s, inv) => s + Math.max(0, inv.amount - inv.paidAmount), 0);
   const in7Days = new Date(TODAY); in7Days.setDate(in7Days.getDate() + 7);
-  const upcomingPayments = payments.filter(p => {
-    if (p.status === 'paid') return false;
-    const d = new Date(p.dueDate);
+  const upcomingInvoices = invoices.filter(inv => {
+    if (inv.status === 'paid') return false;
+    const d = new Date(inv.dueDate);
     return d >= TODAY && d <= in7Days;
   });
-  const totalUpcoming = upcomingPayments.reduce((s, p) => s + p.amount, 0);
+  const totalUpcoming = upcomingInvoices.reduce((s, inv) => s + Math.max(0, inv.amount - inv.paidAmount), 0);
 
   // ── Build hierarchy ───────────────────────────────────────────────────
   const grouped = counterparties
@@ -102,19 +250,22 @@ export default function PaymentsPage() {
         .map(contract => {
           const contractOrders = orders
             .filter(o => o.contractId === contract.id)
-            .map(order => ({ ...order, summary: orderPaymentSummary(order) }));
-          const totalShipped = contractOrders.reduce((s, o) => s + o.summary.shippedAmount, 0);
-          const totalPaid    = contractOrders.reduce((s, o) => s + o.summary.paidAmount, 0);
-          return { ...contract, orders: contractOrders, totalShipped, totalPaid };
+            .map(order => {
+              const inv = orderInvoice(order.id);
+              return { ...order, invoice: inv || null };
+            });
+          const totalInvoiced = contractOrders.reduce((s, o) => s + (o.invoice?.amount || 0), 0);
+          const totalPaid     = contractOrders.reduce((s, o) => s + (o.invoice?.paidAmount || 0), 0);
+          return { ...contract, orders: contractOrders, totalInvoiced, totalPaid };
         });
-      const totalOrders  = cpContracts.reduce((s, c) => s + c.orders.length, 0);
-      const totalShipped = cpContracts.reduce((s, c) => s + c.totalShipped, 0);
-      const totalPaid    = cpContracts.reduce((s, c) => s + c.totalPaid, 0);
-      return { ...cp, contracts: cpContracts, totalOrders, totalShipped, totalPaid };
+      const totalOrders    = cpContracts.reduce((s, c) => s + c.orders.length, 0);
+      const totalInvoiced  = cpContracts.reduce((s, c) => s + c.totalInvoiced, 0);
+      const totalPaid      = cpContracts.reduce((s, c) => s + c.totalPaid, 0);
+      return { ...cp, contracts: cpContracts, totalOrders, totalInvoiced, totalPaid };
     })
     .filter(cp => cp.contracts.length > 0);
 
-  // ── Toggle helpers ────────────────────────────────────────────────────
+  // ── Toggles ───────────────────────────────────────────────────────────
   const toggle = (setter) => (id) => setter(prev => {
     const next = new Set(prev);
     next.has(id) ? next.delete(id) : next.add(id);
@@ -124,24 +275,18 @@ export default function PaymentsPage() {
   const toggleContract = toggle(setExpandedContracts);
   const toggleOrder    = toggle(setExpandedOrders);
 
-  // ── Payment registration ──────────────────────────────────────────────
-  function openPaymentModal(payment) {
-    setPaymentModal(payment);
-    setPaymentForm({ ...emptyPaymentForm, amount: String(payment.amount), date: new Date().toISOString().slice(0, 10) });
-    setPaymentFormErrors({});
+  // ── Actions ───────────────────────────────────────────────────────────
+  async function handleCreateInvoice(data) {
+    await createInvoice(data);
   }
-  function closePaymentModal() {
-    setPaymentModal(null);
-    setPaymentForm(emptyPaymentForm);
-    setPaymentFormErrors({});
+
+  async function handleAddPayment(invoiceId, amount, paidDate, notes) {
+    await addInvoicePayment(invoiceId, amount, paidDate, notes);
   }
-  function handlePaymentSubmit() {
-    const errors = {};
-    if (!paymentForm.amount || Number(paymentForm.amount) <= 0) errors.amount = 'Введите корректную сумму';
-    if (!paymentForm.date) errors.date = 'Укажите дату оплаты';
-    if (Object.keys(errors).length) { setPaymentFormErrors(errors); return; }
-    registerPayment(paymentModal.id, Number(paymentForm.amount), paymentForm.date);
-    closePaymentModal();
+
+  async function handleDeletePayment(invoiceId, paymentId) {
+    if (!confirm('Удалить эту запись об оплате?')) return;
+    await deleteInvoicePayment(invoiceId, paymentId);
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -149,8 +294,8 @@ export default function PaymentsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Платежи</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Контроль оплаты заказов по контрагентам и договорам</p>
+        <h1 className="text-2xl font-bold text-gray-900">Финансы</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Счета на заказы и контроль оплаты</p>
       </div>
 
       {/* Summary cards */}
@@ -158,17 +303,17 @@ export default function PaymentsPage() {
         <StatCard icon={CreditCard} label="К получению" value={formatMoney(totalReceivable)} color="blue" />
         <StatCard
           icon={AlertCircle} label="Просрочено" value={formatMoney(totalOverdue)} color="red"
-          trend={overduePayments.length > 0 ? `${overduePayments.length} счёт(а)` : undefined}
+          trend={overdueInvoices.length > 0 ? `${overdueInvoices.length} счёт(а)` : undefined}
         />
         <StatCard
           icon={Clock} label="Ближайшие 7 дней" value={formatMoney(totalUpcoming)} color="yellow"
-          trend={upcomingPayments.length > 0 ? `${upcomingPayments.length} счёт(а)` : undefined}
+          trend={upcomingInvoices.length > 0 ? `${upcomingInvoices.length} счёт(а)` : undefined}
         />
       </div>
 
       {/* View toggle */}
       <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
-        {[['grouped', 'По контрагентам'], ['flat', 'Все платежи']].map(([key, label]) => (
+        {[['grouped', 'По контрагентам'], ['flat', 'Все счета']].map(([key, label]) => (
           <button
             key={key}
             className={`px-4 py-1.5 text-sm rounded-md font-medium transition-colors ${viewMode === key ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
@@ -202,17 +347,17 @@ export default function PaymentsPage() {
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {cp.totalOrders} заказ(а) · {cp.contracts.length} договор(а)
-                    {cp.totalShipped > 0 && (
-                      <> · Отгружено {formatMoney(cp.totalShipped)} · Оплачено {formatMoney(cp.totalPaid)}</>
+                    {cp.totalInvoiced > 0 && (
+                      <> · Выставлено {formatMoney(cp.totalInvoiced)} · Оплачено {formatMoney(cp.totalPaid)}</>
                     )}
                   </p>
                 </div>
-                {cp.totalShipped > cp.totalPaid ? (
+                {cp.totalInvoiced > cp.totalPaid ? (
                   <div className="text-right flex-shrink-0 mr-3">
-                    <div className="text-sm font-semibold text-orange-600">{formatMoney(cp.totalShipped - cp.totalPaid)}</div>
+                    <div className="text-sm font-semibold text-orange-600">{formatMoney(cp.totalInvoiced - cp.totalPaid)}</div>
                     <div className="text-xs text-gray-400">к оплате</div>
                   </div>
-                ) : cp.totalShipped > 0 ? (
+                ) : cp.totalInvoiced > 0 ? (
                   <div className="flex items-center gap-1 mr-3 text-green-600 text-sm font-medium flex-shrink-0">
                     <CheckCircle size={14} /> Всё оплачено
                   </div>
@@ -264,7 +409,7 @@ export default function PaymentsPage() {
                             <table className="min-w-full text-sm">
                               <thead>
                                 <tr className="border-b border-gray-200">
-                                  {['Заказ', 'Статус заказа', 'Сумма заказа', 'Отгружено', 'Оплачено', 'Оплата', ''].map(h => (
+                                  {['Заказ', 'Статус заказа', 'Сумма заказа', 'Счёт', 'Оплачено / Остаток', 'Статус оплаты', ''].map(h => (
                                     <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap first:pl-10">
                                       {h}
                                     </th>
@@ -272,28 +417,19 @@ export default function PaymentsPage() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {contract.orders.map(order => {
-                                  const { status: payStatus, shippedAmount, paidAmount, paymentRecords } = order.summary;
-                                  const isExpanded  = expandedOrders.has(order.id);
-                                  const hasRecords  = paymentRecords.length > 0;
-                                  const unpaidCount = paymentRecords.filter(p => p.status !== 'paid').length;
-                                  return (
-                                    <OrderRow
-                                      key={order.id}
-                                      order={order}
-                                      payStatus={payStatus}
-                                      shippedAmount={shippedAmount}
-                                      paidAmount={paidAmount}
-                                      paymentRecords={paymentRecords}
-                                      isExpanded={isExpanded}
-                                      hasRecords={hasRecords}
-                                      unpaidCount={unpaidCount}
-                                      onToggle={() => hasRecords && toggleOrder(order.id)}
-                                      onOpenPayment={openPaymentModal}
-                                      calcPenalty={calcPenalty}
-                                    />
-                                  );
-                                })}
+                                {contract.orders.map(order => (
+                                  <OrderRow
+                                    key={order.id}
+                                    order={order}
+                                    invoice={order.invoice}
+                                    isExpanded={expandedOrders.has(order.id)}
+                                    onToggle={() => order.invoice && toggleOrder(order.id)}
+                                    onCreateInvoice={() => setCreateInvoiceFor(order)}
+                                    onAddPayment={(inv) => setAddPaymentFor(inv)}
+                                    onDeletePayment={handleDeletePayment}
+                                    calcPenalty={calcPenalty}
+                                  />
+                                ))}
                               </tbody>
                             </table>
                           )}
@@ -315,7 +451,7 @@ export default function PaymentsPage() {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  {['Контрагент', 'Счёт', 'Сумма', 'Срок', 'Оплачено', 'Статус', 'Штраф', ''].map(h => (
+                  {['Контрагент', 'Заказ', 'Счёт', 'Сумма', 'Оплачено', 'Остаток', 'Срок', 'Статус', ''].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
                       {h}
                     </th>
@@ -323,38 +459,45 @@ export default function PaymentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {payments.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">Нет данных</td></tr>
-                ) : payments.map(p => {
-                  const cp      = counterparties.find(c => c.id === p.counterpartyId);
-                  const penalty = calcPenalty(p);
-                  const overdue = p.status === 'overdue';
+                {invoices.length === 0 ? (
+                  <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">Нет счетов</td></tr>
+                ) : invoices.map(inv => {
+                  const order = orders.find(o => o.id === inv.orderId);
+                  const cp    = counterparties.find(c => c.id === inv.counterpartyId);
+                  const remaining = Math.max(0, inv.amount - inv.paidAmount);
+                  const overdue = inv.status === 'overdue';
                   return (
-                    <tr key={p.id} className={overdue ? 'bg-red-50' : 'hover:bg-gray-50 transition-colors'}>
+                    <tr key={inv.id} className={overdue ? 'bg-red-50' : 'hover:bg-gray-50 transition-colors'}>
                       <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{cp?.name ?? '—'}</td>
-                      <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{p.invoiceNumber}</td>
-                      <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">{formatMoney(p.amount)}</td>
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{order?.number ?? '—'}</td>
+                      <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <Receipt size={13} className="text-gray-400" />
+                          {inv.invoiceNumber}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">{formatMoney(inv.amount)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {inv.paidAmount > 0
+                          ? <span className="text-green-700 font-medium">{formatMoney(inv.paidAmount)}</span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {remaining > 0
+                          ? <span className="text-orange-600 font-medium">{formatMoney(remaining)}</span>
+                          : <span className="text-green-600">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                        <span className={overdue ? 'text-red-600 font-medium' : ''}>{p.dueDate}</span>
+                        <span className={overdue ? 'text-red-600 font-medium' : ''}>
+                          {inv.dueDate || '—'}
+                          {overdue && <span className="ml-1 text-xs">({daysDiff(inv.dueDate)} дн.)</span>}
+                        </span>
                       </td>
+                      <td className="px-4 py-3 whitespace-nowrap"><InvoiceBadge status={inv.status} /></td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {p.paidDate
-                          ? <span className="flex items-center gap-1 text-green-600"><CheckCircle size={13} />{p.paidDate}</span>
-                          : '—'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={p.status} /></td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {penalty > 0 ? (
-                          <span className="text-red-600 font-semibold text-xs">
-                            {formatMoney(penalty)}<br />
-                            <span className="text-gray-500 font-normal">{daysDiff(p.dueDate)} дн.</span>
-                          </span>
-                        ) : '—'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {p.status !== 'paid' && (
-                          <button className="btn-secondary text-xs py-1 px-2" onClick={() => openPaymentModal(p)}>
-                            Зарегистрировать оплату
+                        {inv.status !== 'paid' && (
+                          <button className="btn-secondary text-xs py-1 px-2" onClick={() => setAddPaymentFor(inv)}>
+                            Оплата
                           </button>
                         )}
                       </td>
@@ -367,74 +510,40 @@ export default function PaymentsPage() {
         </div>
       )}
 
-      {/* ── REGISTER PAYMENT MODAL ───────────────────────────────────── */}
-      <Modal
-        isOpen={!!paymentModal}
-        onClose={closePaymentModal}
-        title="Зарегистрировать оплату"
-        footer={
-          <>
-            <button className="btn-secondary" onClick={closePaymentModal}>Отмена</button>
-            <button className="btn-primary" onClick={handlePaymentSubmit}>Сохранить</button>
-          </>
-        }
-      >
-        {paymentModal && (
-          <div className="space-y-4">
-            <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 space-y-1">
-              <p><span className="font-medium">Счёт:</span> {paymentModal.invoiceNumber}</p>
-              <p><span className="font-medium">Сумма к оплате:</span> {formatMoney(paymentModal.amount)}</p>
-              {paymentModal.status === 'overdue' && (
-                <p className="text-red-600"><span className="font-medium">Штраф:</span> {formatMoney(calcPenalty(paymentModal))}</p>
-              )}
-            </div>
-            <div>
-              <label className="form-label">Сумма оплаты (₽) <span className="text-red-500">*</span></label>
-              <input
-                type="number" min={1}
-                className={`form-input${paymentFormErrors.amount ? ' border-red-400 focus:ring-red-400' : ''}`}
-                value={paymentForm.amount}
-                onChange={e => { setPaymentForm(f => ({ ...f, amount: e.target.value })); setPaymentFormErrors(e => ({ ...e, amount: '' })); }}
-              />
-              {paymentFormErrors.amount && <p className="text-red-500 text-xs mt-1">{paymentFormErrors.amount}</p>}
-            </div>
-            <div>
-              <label className="form-label">Дата оплаты <span className="text-red-500">*</span></label>
-              <input
-                type="date"
-                className={`form-input${paymentFormErrors.date ? ' border-red-400 focus:ring-red-400' : ''}`}
-                value={paymentForm.date}
-                onChange={e => { setPaymentForm(f => ({ ...f, date: e.target.value })); setPaymentFormErrors(e => ({ ...e, date: '' })); }}
-              />
-              {paymentFormErrors.date && <p className="text-red-500 text-xs mt-1">{paymentFormErrors.date}</p>}
-            </div>
-            <div>
-              <label className="form-label">Примечание</label>
-              <textarea
-                className="form-input resize-none" rows={2} placeholder="Необязательно"
-                value={paymentForm.note}
-                onChange={e => setPaymentForm(f => ({ ...f, note: e.target.value }))}
-              />
-            </div>
-          </div>
-        )}
-      </Modal>
+      {/* Modals */}
+      <CreateInvoiceModal
+        isOpen={!!createInvoiceFor}
+        onClose={() => setCreateInvoiceFor(null)}
+        order={createInvoiceFor}
+        contracts={contracts}
+        onSave={handleCreateInvoice}
+      />
+      <AddPaymentModal
+        isOpen={!!addPaymentFor}
+        onClose={() => setAddPaymentFor(null)}
+        invoice={addPaymentFor}
+        onSave={handleAddPayment}
+      />
     </div>
   );
 }
 
-// ── OrderRow: renders order row + expandable payment rows ────────────────
-function OrderRow({ order, payStatus, shippedAmount, paidAmount, paymentRecords, isExpanded, hasRecords, unpaidCount, onToggle, onOpenPayment, calcPenalty }) {
+// ── OrderRow ──────────────────────────────────────────────────────────────────
+function OrderRow({ order, invoice, isExpanded, onToggle, onCreateInvoice, onAddPayment, onDeletePayment, calcPenalty }) {
+  const hasInstallments = invoice?.installments?.length > 0;
+  const remaining = invoice ? Math.max(0, invoice.amount - invoice.paidAmount) : 0;
+  const overdue = invoice?.status === 'overdue';
+
   return (
     <>
       <tr
-        className={`border-b border-gray-100 transition-colors ${hasRecords ? 'cursor-pointer' : ''} ${isExpanded ? 'bg-indigo-50/40' : 'hover:bg-gray-100/60'}`}
+        className={`border-b border-gray-100 transition-colors ${invoice ? 'cursor-pointer' : ''} ${isExpanded ? 'bg-indigo-50/40' : 'hover:bg-gray-100/60'}`}
         onClick={onToggle}
       >
         {/* Order number */}
         <td className="pl-10 pr-3 py-3">
           <div className="flex items-center gap-2">
-            {hasRecords
+            {invoice
               ? isExpanded
                 ? <ChevronDown size={14} className="text-indigo-400 flex-shrink-0" />
                 : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />
@@ -445,72 +554,108 @@ function OrderRow({ order, payStatus, shippedAmount, paidAmount, paymentRecords,
             </div>
           </div>
         </td>
+
         {/* Order status */}
         <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={order.status} /></td>
-        {/* Total amount */}
-        <td className="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">{formatMoney(order.totalAmount)}</td>
-        {/* Shipped */}
-        <td className="px-4 py-3 whitespace-nowrap text-gray-600">
-          {shippedAmount > 0 ? formatMoney(shippedAmount) : <span className="text-gray-300">—</span>}
+
+        {/* Order total */}
+        <td className="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">
+          {formatMoney(order.totalAmount || order.total_amount || 0)}
         </td>
-        {/* Paid */}
+
+        {/* Invoice number */}
         <td className="px-4 py-3 whitespace-nowrap">
-          {paidAmount > 0
-            ? <span className="text-green-700 font-medium">{formatMoney(paidAmount)}</span>
-            : <span className="text-gray-300">—</span>}
+          {invoice
+            ? <div className="flex items-center gap-1.5 text-gray-700">
+                <Receipt size={13} className="text-gray-400" />
+                <span className="font-medium">{invoice.invoiceNumber}</span>
+              </div>
+            : <button
+                className="flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 font-medium"
+                onClick={e => { e.stopPropagation(); onCreateInvoice(); }}
+              >
+                <Plus size={13} /> Создать счёт
+              </button>}
         </td>
+
+        {/* Paid / Remaining */}
+        <td className="px-4 py-3 whitespace-nowrap">
+          {invoice ? (
+            <div className="text-xs space-y-0.5">
+              <div className="text-green-700 font-medium">{formatMoney(invoice.paidAmount)}</div>
+              {remaining > 0 && <div className={`${overdue ? 'text-red-500' : 'text-orange-500'} font-medium`}>−{formatMoney(remaining)}</div>}
+            </div>
+          ) : <span className="text-gray-300">—</span>}
+        </td>
+
         {/* Payment status */}
-        <td className="px-4 py-3 whitespace-nowrap"><OrderPayBadge status={payStatus} /></td>
-        {/* Action hint */}
-        <td className="px-4 py-3 text-right whitespace-nowrap">
-          {hasRecords && !isExpanded && unpaidCount > 0 && (
-            <span className="text-xs text-indigo-400 font-medium">{unpaidCount} счёт(а)</span>
+        <td className="px-4 py-3 whitespace-nowrap">
+          {invoice ? <InvoiceBadge status={invoice.status} /> : <span className="text-gray-300 text-xs">Нет счёта</span>}
+        </td>
+
+        {/* Action */}
+        <td className="px-4 py-3 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+          {invoice && invoice.status !== 'paid' && (
+            <button
+              className="btn-secondary text-xs py-1 px-2"
+              onClick={() => onAddPayment(invoice)}
+            >
+              + Оплата
+            </button>
           )}
         </td>
       </tr>
 
-      {/* Payment records (expanded) */}
-      {isExpanded && paymentRecords.map(payment => {
-        const overdue = payment.status === 'overdue';
-        const penalty = calcPenalty(payment);
-        return (
-          <tr
-            key={`pay-${payment.id}`}
-            className={`border-b border-gray-100 text-xs ${overdue ? 'bg-red-50' : 'bg-indigo-50/20'}`}
-          >
-            <td className="pl-14 pr-3 py-2.5" colSpan={1}>
-              <div className="flex items-center gap-1.5 text-gray-500">
-                <span className="text-gray-300 text-base leading-none">└</span>
-                <span className="font-medium text-gray-700">{payment.invoiceNumber}</span>
-              </div>
-            </td>
-            <td className="px-4 py-2.5"><StatusBadge status={payment.status} /></td>
-            <td className="px-4 py-2.5 font-semibold text-gray-800">{formatMoney(payment.amount)}</td>
-            <td className="px-4 py-2.5 text-gray-500">
-              Срок: <span className={overdue ? 'text-red-600 font-medium' : 'text-gray-700'}>{payment.dueDate}</span>
-              {overdue && <span className="ml-1 text-red-500">({daysDiff(payment.dueDate)} дн.)</span>}
-            </td>
-            <td className="px-4 py-2.5">
-              {payment.paidDate
-                ? <span className="flex items-center gap-1 text-green-600"><CheckCircle size={11} />{payment.paidDate}</span>
-                : <span className="text-gray-400">—</span>}
-            </td>
-            <td className="px-4 py-2.5">
-              {penalty > 0 && <span className="text-red-600 font-medium">+{formatMoney(penalty)}</span>}
-            </td>
-            <td className="px-4 py-2.5 text-right">
-              {payment.status !== 'paid' && (
-                <button
-                  className="btn-secondary text-xs py-1 px-2.5"
-                  onClick={e => { e.stopPropagation(); onOpenPayment(payment); }}
-                >
-                  Зарегистрировать
-                </button>
+      {/* Installments (expanded) */}
+      {isExpanded && invoice && (
+        <>
+          {/* Invoice summary row */}
+          <tr className="bg-indigo-50/30 border-b border-indigo-100/50">
+            <td className="pl-14 pr-3 py-2 text-xs text-gray-500" colSpan={3}>
+              <span className="font-medium text-gray-700">Срок оплаты:</span>{' '}
+              <span className={overdue ? 'text-red-600 font-medium' : 'text-gray-700'}>
+                {invoice.dueDate || '—'}
+                {overdue && ` (просрочено ${daysDiff(invoice.dueDate)} дн.)`}
+              </span>
+              {overdue && (
+                <span className="ml-3 text-red-500 font-medium">
+                  Штраф ≈ {formatMoney(calcPenalty(invoice))}
+                </span>
               )}
             </td>
+            <td colSpan={4} />
           </tr>
-        );
-      })}
+
+          {/* Payment installments */}
+          {hasInstallments ? invoice.installments.map(inst => (
+            <tr key={`inst-${inst.id}`} className="border-b border-gray-100 text-xs bg-indigo-50/20">
+              <td className="pl-14 pr-3 py-2.5" colSpan={2}>
+                <div className="flex items-center gap-1.5 text-gray-500">
+                  <span className="text-gray-300 text-base leading-none">└</span>
+                  <CheckCircle size={11} className="text-green-500" />
+                  <span className="text-gray-500">Оплата от {inst.paidDate}</span>
+                  {inst.notes && <span className="text-gray-400 italic">— {inst.notes}</span>}
+                </div>
+              </td>
+              <td className="px-4 py-2.5 font-semibold text-green-700">{formatMoney(inst.amount)}</td>
+              <td colSpan={3} />
+              <td className="px-4 py-2.5 text-right">
+                <button
+                  className="text-red-400 hover:text-red-600 transition-colors"
+                  title="Отменить оплату"
+                  onClick={e => { e.stopPropagation(); onDeletePayment(invoice.id, inst.id); }}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </td>
+            </tr>
+          )) : (
+            <tr className="border-b border-gray-100 text-xs bg-indigo-50/20">
+              <td className="pl-14 pr-3 py-2.5 text-gray-400 italic" colSpan={7}>Платежей ещё нет</td>
+            </tr>
+          )}
+        </>
+      )}
     </>
   );
 }

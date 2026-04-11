@@ -54,13 +54,21 @@ export const ordersApi = {
   delete: (id) => api.delete(`/orders/${id}`),
 };
 
+// Invoices API
+export const invoicesApi = {
+  list: () => api.get('/invoices'),
+  get: (id) => api.get(`/invoices/${id}`),
+  create: (data) => api.post('/invoices', data),
+  update: (id, data) => api.put(`/invoices/${id}`, data),
+  addPayment: (id, amount, paidDate, notes) => api.post(`/invoices/${id}/payments`, { amount, paidDate, notes }),
+  deletePayment: (id, paymentId) => api.delete(`/invoices/${id}/payments/${paymentId}`),
+};
+
 // Payments API
 export const paymentsApi = {
   list: () => api.get('/payments'),
   get: (id) => api.get(`/payments/${id}`),
-  create: (data) => api.post('/payments', data),
   update: (id, data) => api.put(`/payments/${id}`, data),
-  register: (id, amount, date) => api.put(`/payments/${id}/register`, { paidAmount: amount, paidDate: date }),
 };
 
 // Shipments API

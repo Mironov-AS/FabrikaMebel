@@ -44,9 +44,8 @@ router.get('/:id', (req, res) => {
 // POST /api/shipments
 router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_head'), (req, res) => {
   const { orderId, orderNumber, counterpartyId, date, scheduledDate, invoiceNumber, amount, paymentDueDate, deliveryType, deliveryAddress, items = [] } = req.body;
-  if (!invoiceNumber) return res.status(400).json({ error: 'Номер счёта обязателен' });
 
-  const safeInvoiceNumber = sanitizeStr(invoiceNumber);
+  const safeInvoiceNumber = invoiceNumber ? sanitizeStr(invoiceNumber) : null;
   const safeOrderNumber = orderNumber ? sanitizeStr(orderNumber) : null;
   const safeDeliveryAddress = deliveryAddress ? sanitizeStr(deliveryAddress) : null;
 
@@ -68,27 +67,13 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
 
   const effectiveDate = scheduledDate || date;
 
-  // Auto-calculate payment_due_date from contract.payment_delay if not provided manually
-  let resolvedPaymentDueDate = paymentDueDate || null;
-  if (!resolvedPaymentDueDate && order) {
-    if (order.contract_id) {
-      const contract = db.prepare('SELECT * FROM contracts WHERE id = ?').get(order.contract_id);
-      if (contract && contract.payment_delay != null && effectiveDate) {
-        const shipmentDate = new Date(effectiveDate);
-        shipmentDate.setDate(shipmentDate.getDate() + contract.payment_delay);
-        resolvedPaymentDueDate = shipmentDate.toISOString().slice(0, 10);
-      }
-    }
-  }
-
   const result = db.prepare(`
-    INSERT INTO shipments (order_id, order_number, counterparty_id, date, scheduled_date, invoice_number, amount, status, payment_due_date, paid_amount, delivery_type, delivery_address)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, 0, ?, ?)
+    INSERT INTO shipments (order_id, order_number, counterparty_id, date, scheduled_date, invoice_number, amount, status, paid_amount, delivery_type, delivery_address)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled', 0, ?, ?)
   `).run(
     orderId || null, safeOrderNumber, counterpartyId || null,
     effectiveDate, scheduledDate || null,
     safeInvoiceNumber, amount || 0,
-    resolvedPaymentDueDate,
     deliveryType || 'pickup', safeDeliveryAddress
   );
 
@@ -103,12 +88,6 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
       db.prepare('UPDATE order_items SET shipped = shipped + ? WHERE id = ?').run(item.quantity || 0, item.specItemId);
     }
   }
-
-  // Auto-create payment record
-  db.prepare(`
-    INSERT INTO payments (shipment_id, counterparty_id, amount, due_date, status, invoice_number)
-    VALUES (?, ?, ?, ?, 'pending', ?)
-  `).run(shipmentId, counterpartyId || null, amount || 0, resolvedPaymentDueDate, safeInvoiceNumber);
 
   // Move linked order to 'scheduled_for_shipment' so it no longer appears in "ready for shipment" list
   if (orderId) {

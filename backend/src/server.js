@@ -52,6 +52,7 @@ app.use('/api', (_req, res, next) => {
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/contracts', require('./routes/contracts'));
 app.use('/api/orders', require('./routes/orders'));
+app.use('/api/invoices', require('./routes/invoices'));
 app.use('/api/payments', require('./routes/payments'));
 app.use('/api/shipments', require('./routes/shipments'));
 app.use('/api/claims', require('./routes/claims'));

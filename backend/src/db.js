@@ -252,6 +252,30 @@ db.exec(`
   );
 `);
 
+// Invoices table — one per order
+db.exec(`
+  CREATE TABLE IF NOT EXISTS invoices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER,
+    invoice_number TEXT,
+    amount REAL DEFAULT 0,
+    paid_amount REAL DEFAULT 0,
+    status TEXT DEFAULT 'pending',
+    due_date TEXT,
+    counterparty_id INTEGER,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (order_id) REFERENCES orders(id),
+    FOREIGN KEY (counterparty_id) REFERENCES counterparties(id)
+  );
+`);
+
+// Add invoice_id to payments if missing
+const paymentCols = db.pragma('table_info(payments)').map(c => c.name);
+if (!paymentCols.includes('invoice_id')) {
+  db.exec('ALTER TABLE payments ADD COLUMN invoice_id INTEGER REFERENCES invoices(id)');
+}
+
 // Contract files table
 db.exec(`
   CREATE TABLE IF NOT EXISTS contract_files (

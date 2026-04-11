@@ -98,7 +98,7 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
   };
 
   const handleSave = () => {
-    if (!form.orderId || !form.invoiceNumber) return;
+    if (!form.orderId) return;
     if (remainingItems.length === 0) return;
     const effectiveAmount = isWarehouse ? autoAmount : parseFloat(form.amount);
     if (!isWarehouse && !(effectiveAmount > 0)) return;
@@ -124,8 +124,8 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
   };
 
   const canSave = isWarehouse
-    ? form.orderId && form.invoiceNumber && remainingItems.length > 0
-    : form.orderId && form.invoiceNumber && parseFloat(form.amount) > 0 && remainingItems.length > 0;
+    ? form.orderId && remainingItems.length > 0
+    : form.orderId && parseFloat(form.amount) > 0 && remainingItems.length > 0;
 
   return (
     <Modal
@@ -279,8 +279,8 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
 
         {/* Invoice number */}
         <div>
-          <label className="label">Номер накладной <span className="text-red-400">*</span></label>
-          <input className="input" placeholder="ТН-2026-XXXX" value={form.invoiceNumber} onChange={setField('invoiceNumber')} />
+          <label className="label">Номер накладной</label>
+          <input className="input" placeholder="ТН-2026-XXXX (необязательно)" value={form.invoiceNumber} onChange={setField('invoiceNumber')} />
         </div>
 
         {!isWarehouse && (
