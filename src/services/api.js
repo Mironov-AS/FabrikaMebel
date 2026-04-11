@@ -71,6 +71,20 @@ export const shipmentsApi = {
   update: (id, data) => api.put(`/shipments/${id}`, data),
 };
 
+// Drivers API
+export const driversApi = {
+  list: () => api.get('/drivers'),
+  create: (data) => api.post('/drivers', data),
+  update: (id, data) => api.put(`/drivers/${id}`, data),
+};
+
+// Delivery Routes API
+export const deliveryRoutesApi = {
+  list: (date) => api.get('/delivery-routes', { params: date ? { date } : {} }),
+  create: (data) => api.post('/delivery-routes', data),
+  update: (id, data) => api.put(`/delivery-routes/${id}`, data),
+};
+
 // Claims API
 export const claimsApi = {
   list: () => api.get('/claims'),

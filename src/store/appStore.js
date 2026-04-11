@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import {
   contractsApi, ordersApi, paymentsApi, shipmentsApi,
   claimsApi, usersApi, productionApi, notificationsApi, chatApi, auditApi, counterpartiesApi,
-  nomenclatureApi,
+  nomenclatureApi, driversApi, deliveryRoutesApi,
 } from '../services/api';
 import { NOMENCLATURE } from '../data/mockData';
 
@@ -25,6 +25,8 @@ const useAppStore = create((set, get) => ({
   auditLog: [],
   counterparties: [],
   nomenclature: NOMENCLATURE,
+  drivers: [],
+  deliveryRoutes: [],
   isLoading: false,
   error: null,
 
@@ -53,6 +55,9 @@ const useAppStore = create((set, get) => ({
       let chatMessages = [];
       try { const res = await chatApi.list(); chatMessages = res.data; } catch {}
 
+      let drivers = [];
+      try { const res = await driversApi.list(); drivers = res.data; } catch {}
+
       set({
         contracts: contracts.data,
         orders: orders.data,
@@ -65,6 +70,7 @@ const useAppStore = create((set, get) => ({
         users,
         auditLog,
         chatMessages,
+        drivers,
         isLoading: false,
       });
     } catch (err) {
@@ -116,6 +122,30 @@ const useAppStore = create((set, get) => ({
     set(s => ({ shipments: [data, ...s.shipments] }));
     const [paymentsRes, ordersRes] = await Promise.all([paymentsApi.list(), ordersApi.list()]);
     set({ payments: paymentsRes.data, orders: ordersRes.data });
+    return data;
+  },
+
+  // ─── Drivers ─────────────────────────────────────────────
+  addDriver: async (driverData) => {
+    const { data } = await driversApi.create(driverData);
+    set(s => ({ drivers: [...s.drivers, data] }));
+    return data;
+  },
+  updateDriver: async (id, updates) => {
+    const { data } = await driversApi.update(id, updates);
+    set(s => ({ drivers: s.drivers.map(d => d.id === id ? data : d) }));
+    return data;
+  },
+
+  // ─── Delivery Routes ──────────────────────────────────────
+  loadDeliveryRoutes: async (date) => {
+    const { data } = await deliveryRoutesApi.list(date);
+    set({ deliveryRoutes: data });
+    return data;
+  },
+  createDeliveryRoute: async (routeData) => {
+    const { data } = await deliveryRoutesApi.create(routeData);
+    set(s => ({ deliveryRoutes: [...s.deliveryRoutes, data] }));
     return data;
   },
 

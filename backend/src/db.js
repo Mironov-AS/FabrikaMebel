@@ -275,6 +275,49 @@ if (!cpCols.includes('delivery_address')) {
   db.exec('ALTER TABLE counterparties ADD COLUMN delivery_address TEXT');
 }
 
+// Add delivery fields to shipments if missing
+const shipmentCols = db.pragma('table_info(shipments)').map(c => c.name);
+if (!shipmentCols.includes('delivery_type')) {
+  db.exec("ALTER TABLE shipments ADD COLUMN delivery_type TEXT DEFAULT 'pickup'");
+}
+if (!shipmentCols.includes('delivery_address')) {
+  db.exec('ALTER TABLE shipments ADD COLUMN delivery_address TEXT');
+}
+if (!shipmentCols.includes('scheduled_date')) {
+  db.exec('ALTER TABLE shipments ADD COLUMN scheduled_date TEXT');
+}
+
+// Drivers and delivery routes tables
+db.exec(`
+  CREATE TABLE IF NOT EXISTS drivers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    phone TEXT,
+    vehicle TEXT,
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS delivery_routes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    driver_id INTEGER,
+    route_date TEXT NOT NULL,
+    status TEXT DEFAULT 'planned',
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (driver_id) REFERENCES drivers(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS route_shipments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    route_id INTEGER NOT NULL,
+    shipment_id INTEGER NOT NULL,
+    delivery_order INTEGER DEFAULT 0,
+    FOREIGN KEY (route_id) REFERENCES delivery_routes(id) ON DELETE CASCADE,
+    FOREIGN KEY (shipment_id) REFERENCES shipments(id)
+  );
+`);
+
 // Add account-lockout columns if missing (SQLite does not support IF NOT EXISTS for ALTER)
 const existingCols = db.pragma('table_info(users)').map(c => c.name);
 if (!existingCols.includes('failed_attempts')) {

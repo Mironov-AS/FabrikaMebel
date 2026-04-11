@@ -14,9 +14,12 @@ function buildShipment(row) {
     orderNumber: row.order_number,
     counterpartyId: row.counterparty_id,
     date: row.date,
+    scheduledDate: row.scheduled_date,
     invoiceNumber: row.invoice_number,
     amount: row.amount,
     status: row.status,
+    deliveryType: row.delivery_type || 'pickup',
+    deliveryAddress: row.delivery_address || '',
     paymentDueDate: row.payment_due_date,
     paidAmount: row.paid_amount,
     paidDate: row.paid_date,
@@ -39,7 +42,7 @@ router.get('/:id', (req, res) => {
 
 // POST /api/shipments
 router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_head'), (req, res) => {
-  const { orderId, orderNumber, counterpartyId, date, invoiceNumber, amount, paymentDueDate, items = [] } = req.body;
+  const { orderId, orderNumber, counterpartyId, date, scheduledDate, invoiceNumber, amount, paymentDueDate, deliveryType, deliveryAddress, items = [] } = req.body;
   if (!invoiceNumber) return res.status(400).json({ error: 'Номер счёта обязателен' });
 
   // Validate orderId exists if provided
@@ -49,13 +52,15 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
     if (!order) return res.status(404).json({ error: 'Заказ не найден' });
   }
 
+  const effectiveDate = scheduledDate || date;
+
   // Auto-calculate payment_due_date from contract.payment_delay if not provided manually
   let resolvedPaymentDueDate = paymentDueDate || null;
   if (!resolvedPaymentDueDate && order) {
     if (order.contract_id) {
       const contract = db.prepare('SELECT * FROM contracts WHERE id = ?').get(order.contract_id);
-      if (contract && contract.payment_delay != null && date) {
-        const shipmentDate = new Date(date);
+      if (contract && contract.payment_delay != null && effectiveDate) {
+        const shipmentDate = new Date(effectiveDate);
         shipmentDate.setDate(shipmentDate.getDate() + contract.payment_delay);
         resolvedPaymentDueDate = shipmentDate.toISOString().slice(0, 10);
       }
@@ -63,9 +68,15 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
   }
 
   const result = db.prepare(`
-    INSERT INTO shipments (order_id, order_number, counterparty_id, date, invoice_number, amount, status, payment_due_date, paid_amount)
-    VALUES (?, ?, ?, ?, ?, ?, 'shipped', ?, 0)
-  `).run(orderId || null, orderNumber || null, counterpartyId || null, date, invoiceNumber, amount || 0, resolvedPaymentDueDate);
+    INSERT INTO shipments (order_id, order_number, counterparty_id, date, scheduled_date, invoice_number, amount, status, payment_due_date, paid_amount, delivery_type, delivery_address)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, 0, ?, ?)
+  `).run(
+    orderId || null, orderNumber || null, counterpartyId || null,
+    effectiveDate, scheduledDate || null,
+    invoiceNumber, amount || 0,
+    resolvedPaymentDueDate,
+    deliveryType || 'pickup', deliveryAddress || null
+  );
 
   const shipmentId = result.lastInsertRowid;
 
@@ -79,9 +90,9 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
     }
   }
 
-  // Mark the linked order as shipped
+  // Mark the linked order as ready_for_shipment (if not already in a later status)
   if (orderId) {
-    db.prepare("UPDATE orders SET status = 'shipped' WHERE id = ?").run(orderId);
+    db.prepare("UPDATE orders SET status = 'ready_for_shipment' WHERE id = ? AND status NOT IN ('ready_for_shipment', 'shipped', 'completed')").run(orderId);
   }
 
   // Auto-create payment record
