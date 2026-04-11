@@ -101,7 +101,7 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
 });
 
 // PUT /api/shipments/:id/confirm — logistician confirms actual delivery/shipment
-router.put('/:id/confirm', requireRole('admin', 'sales_manager', 'director', 'production_head'), (req, res) => {
+router.put('/:id/confirm', requireRole('admin', 'sales_manager', 'director', 'production_head', 'warehouse'), (req, res) => {
   const shipment = db.prepare('SELECT * FROM shipments WHERE id = ?').get(req.params.id);
   if (!shipment) return res.status(404).json({ error: 'Отгрузка не найдена' });
   if (shipment.status === 'shipped') return res.status(400).json({ error: 'Отгрузка уже подтверждена' });
