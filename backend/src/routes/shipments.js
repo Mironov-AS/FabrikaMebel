@@ -50,6 +50,15 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
   if (orderId) {
     order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
     if (!order) return res.status(404).json({ error: 'Заказ не найден' });
+
+    // Block new shipment if all order items are already fully shipped
+    const orderItems = db.prepare('SELECT id, quantity, shipped FROM order_items WHERE order_id = ?').all(orderId);
+    if (orderItems.length > 0) {
+      const hasUnshipped = orderItems.some(i => (i.shipped || 0) < i.quantity);
+      if (!hasUnshipped) {
+        return res.status(400).json({ error: 'Все позиции заказа уже отгружены. Регистрация новой отгрузки невозможна.' });
+      }
+    }
   }
 
   const effectiveDate = scheduledDate || date;

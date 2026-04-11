@@ -77,7 +77,13 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
 
   const paymentDelay = selectedContract?.paymentDelay ?? selectedContract?.payment_delay ?? 30;
   const paymentDueDate = form.scheduledDate ? addDays(form.scheduledDate, paymentDelay) : null;
-  const autoAmount = selectedOrder?.totalAmount ?? 0;
+
+  // Remaining (unshipped) items for this order
+  const remainingItems = (selectedOrder?.specification ?? [])
+    .map(i => ({ ...i, remaining: i.quantity - (i.shipped || 0) }))
+    .filter(i => i.remaining > 0);
+  const isPartiallyShipped = selectedOrder && (selectedOrder.specification ?? []).some(i => (i.shipped || 0) > 0);
+  const autoAmount = remainingItems.reduce((sum, i) => sum + i.remaining * (i.price || 0), 0);
 
   const handleClose = () => {
     setForm({
@@ -93,6 +99,7 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
 
   const handleSave = () => {
     if (!form.orderId || !form.invoiceNumber) return;
+    if (remainingItems.length === 0) return;
     const effectiveAmount = isWarehouse ? autoAmount : parseFloat(form.amount);
     if (!isWarehouse && !(effectiveAmount > 0)) return;
     const order = selectedOrder;
@@ -106,10 +113,10 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
       amount: effectiveAmount,
       deliveryType: form.deliveryType,
       deliveryAddress: form.deliveryAddress,
-      items: (order.specification ?? []).map(i => ({
+      items: remainingItems.map(i => ({
         specItemId: i.id,
         name: i.name,
-        quantity: i.quantity,
+        quantity: i.remaining,
         price: i.price,
       })),
     });
@@ -117,8 +124,8 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
   };
 
   const canSave = isWarehouse
-    ? form.orderId && form.invoiceNumber
-    : form.orderId && form.invoiceNumber && parseFloat(form.amount) > 0;
+    ? form.orderId && form.invoiceNumber && remainingItems.length > 0
+    : form.orderId && form.invoiceNumber && parseFloat(form.amount) > 0 && remainingItems.length > 0;
 
   return (
     <Modal
@@ -161,10 +168,10 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
           )}
         </div>
 
-        {selectedOrder && shipments?.find(s => s.orderId === selectedOrder.id || s.order_id === selectedOrder.id) && (
+        {selectedOrder && isPartiallyShipped && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-start gap-2 text-sm">
             <CheckCircle size={15} className="text-blue-500 flex-shrink-0 mt-0.5" />
-            <p className="text-blue-800 text-xs">По этому заказу уже оформлена отгрузка — данные подтянуты автоматически.</p>
+            <p className="text-blue-800 text-xs">По этому заказу уже оформлены отгрузки — показаны остатки к отгрузке.</p>
           </div>
         )}
 
@@ -179,10 +186,17 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
               </p>
             )}
             <div className="pt-1 text-xs text-orange-700">
-              <p className="font-medium mb-1">Позиции:</p>
-              {(selectedOrder.specification ?? []).map(i => (
-                <p key={i.id} className="ml-2">· {i.name} × {i.quantity} шт.</p>
-              ))}
+              <p className="font-medium mb-1">Позиции к отгрузке:</p>
+              {remainingItems.length === 0 ? (
+                <p className="ml-2 text-red-600 font-medium">Все позиции уже отгружены</p>
+              ) : (
+                remainingItems.map(i => (
+                  <p key={i.id} className="ml-2">
+                    · {i.name} × {i.remaining} шт.
+                    {i.shipped > 0 && <span className="text-orange-500"> (отгружено: {i.shipped} из {i.quantity})</span>}
+                  </p>
+                ))
+              )}
             </div>
           </div>
         )}
@@ -840,7 +854,12 @@ export default function ShipmentsPage() {
   const currentService = useAppStore(s => s.currentService);
   const isWarehouse = currentService === WAREHOUSE_SERVICE_ID;
 
-  const readyOrders = orders.filter(o => o.status === 'ready_for_shipment');
+  const readyOrders = orders.filter(o => {
+    if (!['ready_for_shipment', 'scheduled_for_shipment'].includes(o.status)) return false;
+    const spec = o.specification ?? [];
+    if (spec.length === 0) return o.status === 'ready_for_shipment';
+    return spec.some(i => (i.shipped || 0) < i.quantity);
+  });
 
   const getCounterparty = (id) => counterparties.find(c => c.id === id);
   const getOrder = (id) => orders.find(o => o.id === id);
