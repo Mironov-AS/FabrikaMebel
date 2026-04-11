@@ -50,7 +50,7 @@ router.put('/:id', requireRole('admin', 'sales_manager', 'director'), (req, res)
       inn = COALESCE(?, inn),
       kpp = COALESCE(?, kpp),
       address = COALESCE(?, address),
-      delivery_address = ?,
+      delivery_address = COALESCE(?, delivery_address),
       contact = COALESCE(?, contact),
       phone = COALESCE(?, phone),
       email = COALESCE(?, email),
@@ -75,7 +75,7 @@ router.delete('/:id', requireRole('admin', 'sales_manager', 'director'), (req, r
 
   db.prepare('DELETE FROM counterparties WHERE id = ?').run(req.params.id);
   logAudit(req.user.id, req.user.name, `Удалён контрагент ${cp.name}`, 'Контрагент', cp.id, req.ip);
-  res.json({ success: true });
+  res.json({ message: 'Контрагент удалён' });
 });
 
 module.exports = router;

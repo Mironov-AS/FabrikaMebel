@@ -2,12 +2,19 @@ const request = require('supertest');
 const app = require('../server');
 const db = require('../db');
 
-// Seed the test database once before all contract tests
+let counterpartyId;
+
+// Seed users and counterparty before all contract tests
 beforeAll(() => {
   db.prepare(`
     INSERT OR IGNORE INTO users (id, name, email, password_hash, role, active)
     VALUES (1, 'Test Admin', 'admin@test.com', 'hash', 'admin', 1)
   `).run();
+
+  const cp = db.prepare(`
+    INSERT INTO counterparties (name, priority) VALUES ('Test Counterparty', 'medium')
+  `).run();
+  counterpartyId = cp.lastInsertRowid;
 });
 
 // Clean contracts table before each test for isolation
@@ -16,6 +23,10 @@ beforeEach(() => {
   db.prepare('DELETE FROM contract_conditions').run();
   db.prepare('DELETE FROM contract_obligations').run();
   db.prepare('DELETE FROM contracts').run();
+});
+
+afterAll(() => {
+  db.prepare('DELETE FROM counterparties WHERE id = ?').run(counterpartyId);
 });
 
 describe('GET /api/contracts', () => {
@@ -63,17 +74,53 @@ describe('POST /api/contracts', () => {
   it('creates a contract and returns 201', async () => {
     const res = await request(app)
       .post('/api/contracts')
-      .send({ number: 'C-NEW-001', status: 'draft', amount: 10000 });
+      .send({
+        number: 'C-NEW-001',
+        counterpartyId,
+        date: '2026-01-01',
+        subject: 'Поставка мебели',
+        status: 'draft',
+        amount: 10000,
+      });
 
     expect(res.status).toBe(201);
     expect(res.body.number).toBe('C-NEW-001');
     expect(res.body.id).toBeDefined();
+    expect(Array.isArray(res.body.conditions)).toBe(true);
+    expect(Array.isArray(res.body.obligations)).toBe(true);
   });
 
   it('returns 400 when number is missing', async () => {
     const res = await request(app)
       .post('/api/contracts')
-      .send({ status: 'draft' });
+      .send({ status: 'draft', counterpartyId, date: '2026-01-01', subject: 'Test' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeDefined();
+  });
+
+  it('returns 400 when counterpartyId is missing', async () => {
+    const res = await request(app)
+      .post('/api/contracts')
+      .send({ number: 'C-X', date: '2026-01-01', subject: 'Test' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeDefined();
+  });
+
+  it('returns 400 when date is missing', async () => {
+    const res = await request(app)
+      .post('/api/contracts')
+      .send({ number: 'C-X', counterpartyId, subject: 'Test' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeDefined();
+  });
+
+  it('returns 400 when subject is missing', async () => {
+    const res = await request(app)
+      .post('/api/contracts')
+      .send({ number: 'C-X', counterpartyId, date: '2026-01-01' });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
@@ -86,7 +133,12 @@ describe('POST /api/contracts', () => {
 
     const res = await request(app)
       .post('/api/contracts')
-      .send({ number: 'C-DUP' });
+      .send({
+        number: 'C-DUP',
+        counterpartyId,
+        date: '2026-01-01',
+        subject: 'Дубликат',
+      });
 
     expect(res.status).toBe(409);
     expect(res.body.error).toBeDefined();
@@ -97,6 +149,9 @@ describe('POST /api/contracts', () => {
       .post('/api/contracts')
       .send({
         number: 'C-WITH-CONDS',
+        counterpartyId,
+        date: '2026-01-01',
+        subject: 'С условиями',
         status: 'draft',
         conditions: [{ text: 'Condition A', fulfilled: false }],
         obligations: [{ party: 'buyer', text: 'Pay on time', status: 'pending' }],
@@ -107,6 +162,21 @@ describe('POST /api/contracts', () => {
     expect(res.body.conditions[0].text).toBe('Condition A');
     expect(res.body.obligations).toHaveLength(1);
     expect(res.body.obligations[0].party).toBe('buyer');
+  });
+
+  it('rejects invalid status', async () => {
+    const res = await request(app)
+      .post('/api/contracts')
+      .send({
+        number: 'C-BAD-STATUS',
+        counterpartyId,
+        date: '2026-01-01',
+        subject: 'Test',
+        status: 'invalid_status',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/статус/i);
   });
 });
 
@@ -126,6 +196,8 @@ describe('PUT /api/contracts/:id', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('active');
     expect(res.body.amount).toBe(9999);
+    // A new version should be appended
+    expect(res.body.versions.length).toBeGreaterThanOrEqual(2);
   });
 
   it('returns 404 for a non-existent id', async () => {
@@ -134,6 +206,18 @@ describe('PUT /api/contracts/:id', () => {
       .send({ status: 'active' });
 
     expect(res.status).toBe(404);
+  });
+
+  it('rejects invalid status on update', async () => {
+    const { lastInsertRowid } = db.prepare(
+      'INSERT INTO contracts (number, status, amount, created_by) VALUES (?, ?, ?, ?)'
+    ).run('C-UPD2', 'draft', 100, 1);
+
+    const res = await request(app)
+      .put(`/api/contracts/${lastInsertRowid}`)
+      .send({ status: 'bad_status' });
+
+    expect(res.status).toBe(400);
   });
 });
 
