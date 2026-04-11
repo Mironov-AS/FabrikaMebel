@@ -30,6 +30,7 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
     deliveryType: 'pickup',
     deliveryAddress: '',
   });
+  const [shipQuantities, setShipQuantities] = useState({});
 
   const setField = (key) => (e) => setForm(prev => ({ ...prev, [key]: e.target.value }));
 
@@ -45,6 +46,17 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
     const ordId = e.target.value;
     const ord = orders.find(o => o.id === parseInt(ordId, 10));
     const cpForOrder = ord ? counterparties.find(c => c.id === (ord.counterpartyId || ord.counterparty_id)) : null;
+    // Initialize ship quantities with full remaining for each item
+    if (ord) {
+      const initQtys = {};
+      (ord.specification ?? []).forEach(i => {
+        const rem = i.quantity - (i.shipped || 0);
+        if (rem > 0) initQtys[i.id] = rem;
+      });
+      setShipQuantities(initQtys);
+    } else {
+      setShipQuantities({});
+    }
     // Check if a shipment already exists for this order — pre-fill its data
     const existingShipment = ord && shipments ? shipments.find(s => s.orderId === ord.id || s.order_id === ord.id) : null;
     if (existingShipment) {
@@ -67,6 +79,10 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
     }
   };
 
+  const handleQtyChange = (id, val) => {
+    setShipQuantities(prev => ({ ...prev, [id]: val }));
+  };
+
   const handleDeliveryTypeChange = (type) => {
     setForm(prev => ({
       ...prev,
@@ -83,7 +99,14 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
     .map(i => ({ ...i, remaining: i.quantity - (i.shipped || 0) }))
     .filter(i => i.remaining > 0);
   const isPartiallyShipped = selectedOrder && (selectedOrder.specification ?? []).some(i => (i.shipped || 0) > 0);
-  const autoAmount = remainingItems.reduce((sum, i) => sum + i.remaining * (i.price || 0), 0);
+
+  // Items to be shipped in current form (respecting user-entered quantities)
+  const itemsToShip = remainingItems.map(i => ({
+    ...i,
+    qty: Math.min(parseInt(shipQuantities[i.id] ?? i.remaining, 10) || 0, i.remaining),
+  })).filter(i => i.qty > 0);
+
+  const autoAmount = itemsToShip.reduce((sum, i) => sum + i.qty * (i.price || 0), 0);
 
   const handleClose = () => {
     setForm({
@@ -94,12 +117,13 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
       deliveryType: 'pickup',
       deliveryAddress: '',
     });
+    setShipQuantities({});
     onClose();
   };
 
   const handleSave = () => {
     if (!form.orderId) return;
-    if (remainingItems.length === 0) return;
+    if (itemsToShip.length === 0) return;
     const effectiveAmount = isWarehouse ? autoAmount : parseFloat(form.amount);
     if (!isWarehouse && !(effectiveAmount > 0)) return;
     const order = selectedOrder;
@@ -113,10 +137,10 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
       amount: effectiveAmount,
       deliveryType: form.deliveryType,
       deliveryAddress: form.deliveryAddress,
-      items: remainingItems.map(i => ({
+      items: itemsToShip.map(i => ({
         specItemId: i.id,
         name: i.name,
-        quantity: i.remaining,
+        quantity: i.qty,
         price: i.price,
       })),
     });
@@ -124,8 +148,8 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
   };
 
   const canSave = isWarehouse
-    ? form.orderId && remainingItems.length > 0
-    : form.orderId && parseFloat(form.amount) > 0 && remainingItems.length > 0;
+    ? form.orderId && itemsToShip.length > 0
+    : form.orderId && parseFloat(form.amount) > 0 && itemsToShip.length > 0;
 
   return (
     <Modal
@@ -185,17 +209,43 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
                 {!isWarehouse && ` · Отсрочка: ${paymentDelay} дн.`}
               </p>
             )}
-            <div className="pt-1 text-xs text-orange-700">
-              <p className="font-medium mb-1">Позиции к отгрузке:</p>
+            <div className="pt-1">
+              <p className="text-xs font-medium text-orange-800 mb-1.5">Количество к отгрузке по позициям:</p>
               {remainingItems.length === 0 ? (
-                <p className="ml-2 text-red-600 font-medium">Все позиции уже отгружены</p>
+                <p className="text-xs text-red-600 font-medium ml-1">Все позиции по этому заказу уже отгружены</p>
               ) : (
-                remainingItems.map(i => (
-                  <p key={i.id} className="ml-2">
-                    · {i.name} × {i.remaining} шт.
-                    {i.shipped > 0 && <span className="text-orange-500"> (отгружено: {i.shipped} из {i.quantity})</span>}
-                  </p>
-                ))
+                <div className="space-y-1.5">
+                  {remainingItems.map(i => {
+                    const max = i.remaining;
+                    const val = shipQuantities[i.id] !== undefined ? shipQuantities[i.id] : max;
+                    return (
+                      <div key={i.id} className="flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-orange-800 truncate">{i.name}</p>
+                          {i.shipped > 0 && (
+                            <p className="text-xs text-orange-500">отгружено ранее: {i.shipped} из {i.quantity}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <input
+                            type="number"
+                            min="0"
+                            max={max}
+                            className="input w-16 text-center py-1 text-xs"
+                            value={val}
+                            onChange={e => handleQtyChange(i.id, e.target.value)}
+                          />
+                          <span className="text-xs text-orange-700">/ {max} шт.</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {isWarehouse && itemsToShip.length > 0 && (
+                <p className="text-xs text-orange-700 mt-2 font-medium">
+                  Сумма отгрузки: {new Intl.NumberFormat('ru-RU').format(autoAmount)} ₽
+                </p>
               )}
             </div>
           </div>
@@ -854,12 +904,9 @@ export default function ShipmentsPage() {
   const currentService = useAppStore(s => s.currentService);
   const isWarehouse = currentService === WAREHOUSE_SERVICE_ID;
 
-  const readyOrders = orders.filter(o => {
-    if (!['ready_for_shipment', 'scheduled_for_shipment'].includes(o.status)) return false;
-    const spec = o.specification ?? [];
-    if (spec.length === 0) return o.status === 'ready_for_shipment';
-    return spec.some(i => (i.shipped || 0) < i.quantity);
-  });
+  const readyOrders = orders.filter(o =>
+    ['ready_for_shipment', 'scheduled_for_shipment'].includes(o.status)
+  );
 
   const getCounterparty = (id) => counterparties.find(c => c.id === id);
   const getOrder = (id) => orders.find(o => o.id === id);
