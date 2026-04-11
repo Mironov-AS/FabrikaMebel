@@ -157,7 +157,7 @@ function yandexStream(apiKey, folderId, messages) {
 
     const req = https.request({
       hostname: 'llm.api.cloud.yandex.net',
-      path: '/foundationModels/v1/completionStream',
+      path: '/foundationModels/v1/completion',
       method: 'POST',
       headers: {
         'Authorization': `Api-Key ${apiKey}`,
