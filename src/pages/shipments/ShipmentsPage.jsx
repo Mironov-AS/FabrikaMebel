@@ -100,10 +100,10 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
     .filter(i => i.remaining > 0);
   const isPartiallyShipped = selectedOrder && (selectedOrder.specification ?? []).some(i => (i.shipped || 0) > 0);
 
-  // Items to be shipped in current form (respecting user-entered quantities)
+  // Items to be shipped — quantities are fixed from order, no manual editing
   const itemsToShip = remainingItems.map(i => ({
     ...i,
-    qty: Math.min(parseInt(shipQuantities[i.id] ?? i.remaining, 10) || 0, i.remaining),
+    qty: i.remaining,
   })).filter(i => i.qty > 0);
 
   const autoAmount = itemsToShip.reduce((sum, i) => sum + i.qty * (i.price || 0), 0);
@@ -210,7 +210,7 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
               </p>
             )}
             <div className="pt-1">
-              <p className="text-xs font-medium text-orange-800 mb-1.5">Количество к отгрузке по позициям:</p>
+              <p className="text-xs font-medium text-orange-800 mb-1.5">Позиции к отгрузке:</p>
               {remainingItems.length === 0 ? (
                 <p className="text-xs text-red-600 font-medium ml-1">Все позиции по этому заказу уже отгружены</p>
               ) : (
@@ -227,15 +227,7 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
                           )}
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
-                          <input
-                            type="number"
-                            min="0"
-                            max={max}
-                            className="input w-16 text-center py-1 text-xs"
-                            value={val}
-                            onChange={e => handleQtyChange(i.id, e.target.value)}
-                          />
-                          <span className="text-xs text-orange-700">/ {max} шт.</span>
+                          <span className="text-xs font-semibold text-orange-900">{max} шт.</span>
                         </div>
                       </div>
                     );
