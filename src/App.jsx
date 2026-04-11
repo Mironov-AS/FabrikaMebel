@@ -18,6 +18,7 @@ import ChatPage from './pages/chat/ChatPage';
 import AdminPage from './pages/admin/AdminPage';
 import CounterpartiesPage from './pages/counterparties/CounterpartiesPage';
 import AIAssistant from './pages/ai-assistant/AIAssistant';
+import NomenclaturePage from './pages/nomenclature/NomenclaturePage';
 
 function LayoutWrapper() {
   const loadAll = useAppStore(s => s.loadAll);
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="/counterparties" element={<CounterpartiesPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/nomenclature" element={<NomenclaturePage />} />
           <Route path="/ai-assistant" element={<AIAssistant />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

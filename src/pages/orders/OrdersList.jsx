@@ -38,9 +38,10 @@ function completionPct(spec) {
 
 // ─── Empty spec item ──────────────────────────────────────────────────────────
 
-const EMPTY_ITEM = { name: '', article: '', quantity: '', price: '' };
 let _itemKeyCounter = 0;
 const nextKey = () => ++_itemKeyCounter;
+
+const emptySpecItem = () => ({ nomenclatureId: '', quantity: '', _key: nextKey() });
 
 // ─── New Order Modal ──────────────────────────────────────────────────────────
 
@@ -52,52 +53,65 @@ const EMPTY_FORM = {
 };
 
 function NewOrderModal({ isOpen, onClose }) {
-  const addOrder = useAppStore(s => s.addOrder);
-  const contracts = useAppStore(s => s.contracts);
+  const addOrder       = useAppStore(s => s.addOrder);
+  const contracts      = useAppStore(s => s.contracts);
   const counterparties = useAppStore(s => s.counterparties);
+  const nomenclature   = useAppStore(s => s.nomenclature);
 
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [items, setItems] = useState([{ ...EMPTY_ITEM, _key: nextKey() }]);
+  // Only active items can be added to orders
+  const activeItems = nomenclature.filter(n => n.status === 'active');
+
+  const [form,  setForm]  = useState(EMPTY_FORM);
+  const [items, setItems] = useState([emptySpecItem()]);
 
   const setField = (key) => (e) => setForm(prev => ({ ...prev, [key]: e.target.value }));
 
-  // Auto-fill counterparty from selected contract
   const selectedContract = contracts.find(c => c.id === parseInt(form.contractId, 10));
   const counterparty = selectedContract
     ? counterparties.find(cp => cp.id === selectedContract.counterpartyId)
     : null;
 
   const handleItemChange = (idx, key, value) => {
-    setItems(prev => prev.map((it, i) => i === idx ? { ...it, [key]: value } : it));
+    setItems(prev => prev.map((it, i) => {
+      if (i !== idx) return it;
+      const updated = { ...it, [key]: value };
+      // When nomenclature item is selected, carry over its price
+      if (key === 'nomenclatureId') {
+        const nom = activeItems.find(n => n.id === parseInt(value, 10));
+        updated._nom = nom ?? null;
+      }
+      return updated;
+    }));
   };
 
-  const addItem = () => {
-    setItems(prev => [...prev, { ...EMPTY_ITEM, _key: nextKey() }]);
-  };
-
-  const removeItem = (idx) => {
-    setItems(prev => prev.filter((_, i) => i !== idx));
-  };
+  const addItem = () => setItems(prev => [...prev, emptySpecItem()]);
+  const removeItem = (idx) => setItems(prev => prev.filter((_, i) => i !== idx));
 
   const handleClose = () => {
     setForm(EMPTY_FORM);
-    setItems([{ ...EMPTY_ITEM, _key: nextKey() }]);
+    setItems([emptySpecItem()]);
     onClose();
   };
 
   const handleSave = () => {
     if (!form.number || !form.contractId) return;
     const spec = items
-      .filter(it => it.name.trim())
-      .map((it, idx) => ({
-        id: Date.now() + idx,
-        name: it.name,
-        article: it.article,
-        quantity: parseInt(it.quantity, 10) || 0,
-        price: parseFloat(it.price) || 0,
-        status: 'planned',
-        shipped: 0,
-      }));
+      .filter(it => it.nomenclatureId && parseInt(it.quantity, 10) > 0)
+      .map((it, idx) => {
+        const nom = it._nom ?? activeItems.find(n => n.id === parseInt(it.nomenclatureId, 10));
+        return {
+          id: Date.now() + idx,
+          nomenclatureId: nom?.id ?? null,
+          name:     nom?.name     ?? '',
+          article:  nom?.article  ?? '',
+          category: nom?.category ?? '',
+          unit:     nom?.unit     ?? 'шт',
+          quantity: parseInt(it.quantity, 10),
+          price:    nom?.price    ?? 0,
+          status:   'planned',
+          shipped:  0,
+        };
+      });
     const total = spec.reduce((s, it) => s + it.quantity * it.price, 0);
     addOrder({
       number: form.number,
@@ -113,7 +127,8 @@ function NewOrderModal({ isOpen, onClose }) {
     handleClose();
   };
 
-  const canSave = form.number.trim() && form.contractId;
+  const canSave = form.number.trim() && form.contractId
+    && items.some(it => it.nomenclatureId && parseInt(it.quantity, 10) > 0);
 
   return (
     <Modal
@@ -133,12 +148,7 @@ function NewOrderModal({ isOpen, onClose }) {
         {/* Номер */}
         <div>
           <label className="label">Номер <span className="text-red-400">*</span></label>
-          <input
-            className="input"
-            placeholder="ЗАК-2026-XXXX"
-            value={form.number}
-            onChange={setField('number')}
-          />
+          <input className="input" placeholder="ЗАК-2026-XXXX" value={form.number} onChange={setField('number')} />
         </div>
 
         {/* Договор */}
@@ -165,12 +175,7 @@ function NewOrderModal({ isOpen, onClose }) {
         {/* Дата отгрузки */}
         <div>
           <label className="label">Дата отгрузки</label>
-          <input
-            className="input"
-            type="date"
-            value={form.shipmentDeadline}
-            onChange={setField('shipmentDeadline')}
-          />
+          <input className="input" type="date" value={form.shipmentDeadline} onChange={setField('shipmentDeadline')} />
         </div>
 
         {/* Приоритет */}
@@ -183,7 +188,7 @@ function NewOrderModal({ isOpen, onClose }) {
           </select>
         </div>
 
-        {/* Спецификация */}
+        {/* Спецификация — из номенклатуры */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="label mb-0">Спецификация</label>
@@ -196,54 +201,69 @@ function NewOrderModal({ isOpen, onClose }) {
             </button>
           </div>
 
-          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-            {items.map((item, idx) => (
-              <div key={item._key} className="grid grid-cols-12 gap-1.5 items-center">
-                {/* Наименование */}
-                <input
-                  className="input col-span-4 text-xs py-1.5"
-                  placeholder="Наименование"
-                  value={item.name}
-                  onChange={(e) => handleItemChange(idx, 'name', e.target.value)}
-                />
-                {/* Артикул */}
-                <input
-                  className="input col-span-2 text-xs py-1.5"
-                  placeholder="Артикул"
-                  value={item.article}
-                  onChange={(e) => handleItemChange(idx, 'article', e.target.value)}
-                />
-                {/* Кол-во */}
-                <input
-                  className="input col-span-2 text-xs py-1.5"
-                  type="number"
-                  min="1"
-                  placeholder="Кол-во"
-                  value={item.quantity}
-                  onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
-                />
-                {/* Цена */}
-                <input
-                  className="input col-span-3 text-xs py-1.5"
-                  type="number"
-                  min="0"
-                  placeholder="Цена"
-                  value={item.price}
-                  onChange={(e) => handleItemChange(idx, 'price', e.target.value)}
-                />
-                {/* Удалить */}
-                <button
-                  type="button"
-                  className="col-span-1 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
-                  onClick={() => removeItem(idx)}
-                  disabled={items.length === 1}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
+          {activeItems.length === 0 && (
+            <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 mb-2">
+              Нет активных позиций в номенклатуре. Добавьте товары в разделе «Номенклатура».
+            </p>
+          )}
+
+          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+            {items.map((item, idx) => {
+              const nom = item._nom ?? activeItems.find(n => n.id === parseInt(item.nomenclatureId, 10));
+              return (
+                <div key={item._key} className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      className="input flex-1 text-xs py-1.5"
+                      value={item.nomenclatureId}
+                      onChange={e => handleItemChange(idx, 'nomenclatureId', e.target.value)}
+                    >
+                      <option value="">— Выберите из номенклатуры —</option>
+                      {activeItems.map(n => (
+                        <option key={n.id} value={n.id}>
+                          [{n.article}] {n.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className="input w-20 text-xs py-1.5 text-center"
+                      type="number"
+                      min="1"
+                      placeholder="Кол-во"
+                      value={item.quantity}
+                      onChange={e => handleItemChange(idx, 'quantity', e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="flex-shrink-0 text-gray-400 hover:text-red-500 transition-colors p-1"
+                      onClick={() => removeItem(idx)}
+                      disabled={items.length === 1}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                  {nom && (
+                    <div className="flex items-center gap-3 px-1 text-xs text-gray-400">
+                      <span>{nom.category}</span>
+                      <span>·</span>
+                      <span>{new Intl.NumberFormat('ru-RU').format(nom.price)} ₽ / {nom.unit}</span>
+                      {item.quantity > 0 && (
+                        <>
+                          <span>·</span>
+                          <span className="text-gray-600 font-medium">
+                            Итого: {new Intl.NumberFormat('ru-RU').format(nom.price * parseInt(item.quantity, 10))} ₽
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          <p className="text-xs text-gray-400 mt-1.5">Наименование / Артикул / Кол-во / Цена</p>
+          <p className="text-xs text-gray-400 mt-1.5">
+            Товары выбираются из справочника номенклатуры
+          </p>
         </div>
       </div>
     </Modal>

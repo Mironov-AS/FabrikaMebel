@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import {
   contractsApi, ordersApi, paymentsApi, shipmentsApi,
   claimsApi, usersApi, productionApi, notificationsApi, chatApi, auditApi, counterpartiesApi,
+  nomenclatureApi,
 } from '../services/api';
+import { NOMENCLATURE } from '../data/mockData';
 
 const useAppStore = create((set, get) => ({
   // ─── Service selection ───────────────────────────────────
@@ -22,6 +24,7 @@ const useAppStore = create((set, get) => ({
   users: [],
   auditLog: [],
   counterparties: [],
+  nomenclature: NOMENCLATURE,
   isLoading: false,
   dataLoaded: false,
   error: null,
@@ -198,6 +201,37 @@ const useAppStore = create((set, get) => ({
   deleteUser: async (id) => {
     await usersApi.delete(id);
     set(s => ({ users: s.users.map(u => u.id === id ? { ...u, active: false } : u) }));
+  },
+
+  // ─── Nomenclature ────────────────────────────────────────
+  addNomenclatureItem: (item) => {
+    const id = Date.now();
+    const newItem = { ...item, id, status: 'active' };
+    set(s => ({ nomenclature: [...s.nomenclature, newItem] }));
+    try { nomenclatureApi.create(newItem); } catch {}
+    return newItem;
+  },
+  updateNomenclatureItem: (id, updates) => {
+    set(s => ({
+      nomenclature: s.nomenclature.map(n => n.id === id ? { ...n, ...updates } : n),
+    }));
+    try { nomenclatureApi.update(id, updates); } catch {}
+  },
+  deleteNomenclatureItem: (id) => {
+    set(s => ({ nomenclature: s.nomenclature.filter(n => n.id !== id) }));
+    try { nomenclatureApi.delete(id); } catch {}
+  },
+  discontinueNomenclatureItem: (id) => {
+    set(s => ({
+      nomenclature: s.nomenclature.map(n => n.id === id ? { ...n, status: 'discontinued' } : n),
+    }));
+    try { nomenclatureApi.update(id, { status: 'discontinued' }); } catch {}
+  },
+  restoreNomenclatureItem: (id) => {
+    set(s => ({
+      nomenclature: s.nomenclature.map(n => n.id === id ? { ...n, status: 'active' } : n),
+    }));
+    try { nomenclatureApi.update(id, { status: 'active' }); } catch {}
   },
 }));
 

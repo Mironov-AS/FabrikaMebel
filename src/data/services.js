@@ -2,7 +2,7 @@ import {
   TrendingUp, Factory, Truck,
   CreditCard, BarChart3, Settings, AlertCircle,
   LayoutDashboard, FileText, ShoppingCart, MessageSquare,
-  ClipboardList, PackageCheck, Building2, Bot,
+  ClipboardList, PackageCheck, Building2, Bot, BookOpen,
 } from 'lucide-react';
 
 export const ALL_NAV_ITEMS = [
@@ -11,6 +11,7 @@ export const ALL_NAV_ITEMS = [
   { label: 'Контрагенты',        icon: Building2,       path: '/counterparties' },
   { label: 'Заказы',             icon: ShoppingCart,    path: '/orders' },
   { label: 'Производство',       icon: Factory,         path: '/production' },
+  { label: 'Номенклатура',       icon: BookOpen,        path: '/nomenclature' },
   { label: 'Отгрузки',           icon: Truck,           path: '/shipments' },
   { label: 'Платежи',            icon: CreditCard,      path: '/payments' },
   { label: 'Рекламации',         icon: AlertCircle,     path: '/claims' },
@@ -57,7 +58,7 @@ export const SERVICES = [
     textColor: 'text-orange-700',
     borderColor: 'border-orange-200',
     description: 'Производственные задачи и планирование',
-    navPaths: ['/production', '/orders', '/ai-assistant'],
+    navPaths: ['/production', '/orders', '/nomenclature', '/ai-assistant'],
     defaultPath: '/production',
   },
   {
@@ -96,7 +97,7 @@ export const SERVICES = [
     textColor: 'text-purple-700',
     borderColor: 'border-purple-200',
     description: 'Аналитика, отчёты и контроль деятельности',
-    navPaths: ['/dashboard', '/contracts', '/orders', '/reports', '/claims', '/ai-assistant'],
+    navPaths: ['/dashboard', '/contracts', '/orders', '/nomenclature', '/reports', '/claims', '/ai-assistant'],
     defaultPath: '/dashboard',
   },
   {
@@ -109,7 +110,20 @@ export const SERVICES = [
     textColor: 'text-gray-700',
     borderColor: 'border-gray-200',
     description: 'Настройки системы и управление',
-    navPaths: ['/admin', '/ai-assistant'],
+    navPaths: ['/admin', '/nomenclature', '/ai-assistant'],
     defaultPath: '/admin',
+  },
+  {
+    id: 'nomenclature',
+    name: 'Номенклатура',
+    icon: BookOpen,
+    colorClass: 'bg-indigo-500',
+    gradientClass: 'from-indigo-500 to-indigo-700',
+    lightBg: 'bg-indigo-50',
+    textColor: 'text-indigo-700',
+    borderColor: 'border-indigo-200',
+    description: 'Справочник производимой продукции фабрики',
+    navPaths: ['/nomenclature', '/ai-assistant'],
+    defaultPath: '/nomenclature',
   },
 ];

@@ -134,6 +134,31 @@ export const CONTRACTS = [
 
 export const PRODUCT_CATEGORIES = ['Офисные кресла', 'Столы', 'Тумбы', 'Шкафы', 'Диваны', 'Кресла мягкие', 'Кровати', 'Матрасы'];
 
+export const NOMENCLATURE_UNITS = ['шт', 'м²', 'м', 'пара', 'компл'];
+
+export const NOMENCLATURE = [
+  { id: 1,  article: 'KO-001', name: 'Кресло офисное «Комфорт-М»',         category: 'Офисные кресла',  unit: 'шт',   price: 8500,   description: 'Эргономичное офисное кресло с подлокотниками и регулировкой высоты',       status: 'active' },
+  { id: 2,  article: 'KO-002', name: 'Кресло офисное «Менеджер»',           category: 'Офисные кресла',  unit: 'шт',   price: 12000,  description: 'Кресло для менеджеров с кожаной обивкой и поясничной поддержкой',           status: 'active' },
+  { id: 3,  article: 'KO-003', name: 'Кресло офисное «Директор»',           category: 'Офисные кресла',  unit: 'шт',   price: 24000,  description: 'Представительское кресло руководителя из натуральной кожи',                 status: 'active' },
+  { id: 4,  article: 'ST-160', name: 'Стол рабочий 160×80',                 category: 'Столы',           unit: 'шт',   price: 12000,  description: 'Рабочий стол из ЛДСП, размер 160×80 см, цвет дуб сонома',                  status: 'active' },
+  { id: 5,  article: 'ST-120', name: 'Стол рабочий 120×60',                 category: 'Столы',           unit: 'шт',   price: 8200,   description: 'Компактный рабочий стол из ЛДСП, размер 120×60 см',                         status: 'active' },
+  { id: 6,  article: 'ST-240', name: 'Стол переговорный 240×120',           category: 'Столы',           unit: 'шт',   price: 24000,  description: 'Переговорный стол на 8-10 человек, размер 240×120 см',                      status: 'active' },
+  { id: 7,  article: 'ST-UG',  name: 'Стол рабочий угловой',               category: 'Столы',           unit: 'шт',   price: 16800,  description: 'Угловой рабочий стол Г-образной формы из ЛДСП',                            status: 'active' },
+  { id: 8,  article: 'TU-003', name: 'Тумба 3-ящичная',                    category: 'Тумбы',           unit: 'шт',   price: 5500,   description: 'Тумба-сателлит с 3 ящиками, замком и колёсиками',                          status: 'active' },
+  { id: 9,  article: 'TU-002', name: 'Тумба 2-ящичная',                    category: 'Тумбы',           unit: 'шт',   price: 4200,   description: 'Тумба с 2 ящиками, подходит под стандартные столы 160×80',                  status: 'active' },
+  { id: 10, article: 'SH-004', name: 'Шкаф 4-дверный',                     category: 'Шкафы',           unit: 'шт',   price: 18000,  description: 'Шкаф офисный 4-дверный с полками и штангой для одежды',                    status: 'active' },
+  { id: 11, article: 'SH-002', name: 'Шкаф 2-дверный',                     category: 'Шкафы',           unit: 'шт',   price: 9500,   description: 'Шкаф офисный 2-дверный для документов с 4 полками',                        status: 'active' },
+  { id: 12, article: 'DV-001', name: 'Диван угловой «Люкс»',               category: 'Диваны',          unit: 'шт',   price: 35000,  description: 'Угловой диван в ткани категории А, механизм «пума»',                       status: 'active' },
+  { id: 13, article: 'DV-002', name: 'Диван прямой «Стандарт»',            category: 'Диваны',          unit: 'шт',   price: 18000,  description: 'Прямой диван для зон ожидания и переговорных комнат',                      status: 'active' },
+  { id: 14, article: 'KR-001', name: 'Кресло мягкое «Релакс»',             category: 'Кресла мягкие',   unit: 'шт',   price: 18000,  description: 'Мягкое кресло с высокой спинкой, ткань антикоготь',                        status: 'active' },
+  { id: 15, article: 'KR-002', name: 'Кресло мягкое «Лофт»',               category: 'Кресла мягкие',   unit: 'шт',   price: 22000,  description: 'Дизайнерское мягкое кресло в стиле лофт, экокожа',                         status: 'active' },
+  { id: 16, article: 'KV-001', name: 'Кровать односпальная 90×200',         category: 'Кровати',         unit: 'шт',   price: 14000,  description: 'Односпальная кровать из массива берёзы, с основанием',                     status: 'active' },
+  { id: 17, article: 'KV-002', name: 'Кровать двуспальная 160×200',         category: 'Кровати',         unit: 'шт',   price: 28000,  description: 'Двуспальная кровать с мягким изголовьем и подъёмным механизмом',           status: 'active' },
+  { id: 18, article: 'MT-001', name: 'Матрас ортопедический 90×200',        category: 'Матрасы',         unit: 'шт',   price: 9800,   description: 'Ортопедический матрас с пружинным блоком независимые пружины',             status: 'active' },
+  { id: 19, article: 'ST-OLD', name: 'Стол письменный «Классик» (снят)',    category: 'Столы',           unit: 'шт',   price: 7500,   description: 'Устаревшая модель, снята с производства',                                  status: 'discontinued' },
+  { id: 20, article: 'KO-OLD', name: 'Кресло «Эконом» (снято)',             category: 'Офисные кресла',  unit: 'шт',   price: 3200,   description: 'Бюджетная модель, снята в пользу более новых аналогов',                    status: 'discontinued' },
+];
+
 export const ORDERS = [
   {
     id: 1,

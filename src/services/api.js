@@ -120,6 +120,15 @@ export const auditApi = {
   list: (limit = 50, offset = 0) => api.get('/audit', { params: { limit, offset } }),
 };
 
+// Nomenclature API
+export const nomenclatureApi = {
+  list: () => api.get('/nomenclature'),
+  get: (id) => api.get(`/nomenclature/${id}`),
+  create: (data) => api.post('/nomenclature', data),
+  update: (id, data) => api.put(`/nomenclature/${id}`, data),
+  delete: (id) => api.delete(`/nomenclature/${id}`),
+};
+
 // Auth API
 export const authApi = {
   login: (email, password) => api.post('/auth/login', { email, password }),
