@@ -801,24 +801,26 @@ function ShipmentCalendar({ shipments, counterparties, routes, drivers, onCreate
 
       {/* Day detail panel */}
       {selectedDate && (
-        <div className="w-96 flex-shrink-0">
-          <div className="card overflow-hidden">
-            <div className="px-4 py-3 bg-gray-50 border-b flex items-center justify-between">
+        <div className="w-80 flex-shrink-0">
+          <div className="card flex flex-col" style={{ maxHeight: 'calc(100vh - 11rem)' }}>
+            <div className="px-4 py-3 bg-gray-50 border-b flex items-center justify-between flex-shrink-0 rounded-t-xl">
               <h3 className="text-sm font-semibold text-gray-800">Отгрузки на день</h3>
               <button className="p-1 hover:bg-gray-200 rounded" onClick={() => setSelectedDate(null)}>
                 <X size={14} />
               </button>
             </div>
-            <DayDetailPanel
-              date={selectedDate}
-              shipments={shipments}
-              counterparties={counterparties}
-              routes={routes}
-              drivers={drivers}
-              onCreateRoute={onCreateRoute}
-              onAddDriver={onAddDriver}
-              onPrintWaybill={onPrintWaybill}
-            />
+            <div className="flex-1 overflow-y-auto">
+              <DayDetailPanel
+                date={selectedDate}
+                shipments={shipments}
+                counterparties={counterparties}
+                routes={routes}
+                drivers={drivers}
+                onCreateRoute={onCreateRoute}
+                onAddDriver={onAddDriver}
+                onPrintWaybill={onPrintWaybill}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -920,7 +922,7 @@ export default function ShipmentsPage() {
   };
 
   const tableHeaders = isWarehouse
-    ? ['Дата', 'Накладная', 'Заказ', 'Контрагент', 'Способ', 'Адрес', 'Позиции', 'Статус', '']
+    ? ['Дата', 'Накладная', 'Заказ', 'Контрагент', 'Способ', 'Адрес', 'Позиции', 'Статус', 'Действие']
     : ['Дата', 'Накладная', 'Заказ', 'Контрагент', 'Способ', 'Позиции', 'Сумма', 'Статус отгрузки', 'Статус оплаты', 'Срок оплаты'];
 
   return (
@@ -1002,8 +1004,17 @@ export default function ShipmentsPage() {
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  {tableHeaders.map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                  {tableHeaders.map((h, i) => (
+                    <th
+                      key={h}
+                      className={`px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap${
+                        isWarehouse && i === tableHeaders.length - 1
+                          ? ' sticky right-0 bg-gray-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]'
+                          : ''
+                      }`}
+                    >
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -1082,7 +1093,7 @@ export default function ShipmentsPage() {
                       )}
                       {/* Confirm button — warehouse only, for scheduled shipments */}
                       {isWarehouse && (
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="px-4 py-3 whitespace-nowrap sticky right-0 bg-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]">
                           {s.status !== 'shipped' ? (
                             <button
                               className="inline-flex items-center gap-1.5 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 font-medium transition-colors"

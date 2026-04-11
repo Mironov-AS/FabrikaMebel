@@ -29,7 +29,7 @@ function formatDate(date) {
   });
 }
 
-export default function Header() {
+export default function Header({ isCollapsed }) {
   const { notifications, markAllRead } = useAppStore();
   const location = useLocation();
   const [open, setOpen] = useState(false);
@@ -43,7 +43,7 @@ export default function Header() {
   }
 
   return (
-    <header className="fixed top-0 left-60 right-0 h-14 bg-white border-b border-gray-200 z-20 flex items-center justify-between px-6">
+    <header className={`fixed top-0 right-0 h-14 bg-white border-b border-gray-200 z-20 flex items-center justify-between px-6 transition-all duration-300 ${isCollapsed ? 'left-14' : 'left-60'}`}>
       <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
 
       <div className="flex items-center gap-4">

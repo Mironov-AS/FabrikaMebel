@@ -30,7 +30,7 @@ export default function Layout({ children }) {
           sidebarCollapsed ? 'ml-14' : 'ml-60'
         }`}
       >
-        <Header />
+        <Header isCollapsed={sidebarCollapsed} />
         {/* Offset content below fixed header */}
         <main className="flex-1 mt-14 p-6 overflow-auto">
           {children}
