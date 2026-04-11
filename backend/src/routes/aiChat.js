@@ -74,6 +74,16 @@ function buildSystemPrompt() {
     ORDER BY cl.date DESC
   `).all();
 
+  const production = db.prepare(`
+    SELECT pt.id, pt.name, pt.status, pt.start_date, pt.end_date,
+           pt.progress, pt.responsible, pt.priority, pt.order_number,
+           cp.name AS counterparty_name
+    FROM production_tasks pt
+    LEFT JOIN orders o ON pt.order_id = o.id
+    LEFT JOIN counterparties cp ON o.counterparty_id = cp.id
+    ORDER BY pt.end_date ASC
+  `).all();
+
   const statusLabels = {
     // contracts
     active: 'активен', completed: 'выполнен', suspended: 'приостановлен', draft: 'черновик',
@@ -142,6 +152,11 @@ ${shipments.map(s =>
 ## РЕКЛАМАЦИИ (${claims.length})
 ${claims.map(c =>
   `- №${c.number} | ${c.counterparty_name || '—'} | Договор №${c.contract_number || '—'} | Статус: ${t(c.status)} | Срок: ${c.deadline || '—'} | Ответственный: ${c.responsible || '—'} | Описание: ${c.description || '—'}`
+).join('\n') || 'Нет данных'}
+
+## ПРОИЗВОДСТВО (${production.length} задач)
+${production.map(p =>
+  `- ${p.name} | Заказ №${p.order_number || '—'} | ${p.counterparty_name || '—'} | Статус: ${t(p.status)} | Прогресс: ${p.progress ?? 0}% | Срок: ${p.end_date || '—'} | Ответственный: ${p.responsible || '—'} | Приоритет: ${t(p.priority)}`
 ).join('\n') || 'Нет данных'}`;
 }
 
@@ -174,7 +189,7 @@ router.post('/', async (req, res) => {
 
     const stream = await client.messages.stream({
       model: process.env.ANTHROPIC_MODEL || 'claude-opus-4-6',
-      max_tokens: 900,
+      max_tokens: 4096,
       system: systemPrompt,
       messages,
     });
