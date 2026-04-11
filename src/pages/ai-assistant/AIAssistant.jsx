@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { Bot, Send, User, Trash2, Lightbulb, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Bot, Send, User, Trash2, Lightbulb, Loader2, Key, ChevronRight } from 'lucide-react';
 import api from '../../services/api';
 
 const SUGGESTIONS = [
@@ -9,13 +9,137 @@ const SUGGESTIONS = [
   'Какие рекламации открыты?',
   'Какой контрагент имеет наибольшую задолженность?',
   'Какие заказы нужно отгрузить в ближайшее время?',
+  'Какова общая сумма активных договоров?',
+  'Есть ли договоры с истекающим сроком?',
 ];
+
+// ── Markdown renderer ────────────────────────────────────────────────────────
+
+function renderInlineHtml(text) {
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return escaped
+    .replace(/`([^`]+)`/g, '<code style="background:#f3f4f6;padding:1px 4px;border-radius:3px;font-size:0.8em;font-family:monospace">$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+}
+
+function parseBlocks(text) {
+  const lines = text.split('\n');
+  const blocks = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Code block
+    if (line.startsWith('```')) {
+      i++;
+      const codeLines = [];
+      while (i < lines.length && !lines[i].startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      blocks.push({ type: 'code', content: codeLines.join('\n') });
+      i++;
+      continue;
+    }
+
+    // Headings
+    const h3 = line.match(/^### (.+)/);
+    const h2 = line.match(/^## (.+)/);
+    const h1 = line.match(/^# (.+)/);
+    if (h3) { blocks.push({ type: 'h3', content: h3[1] }); i++; continue; }
+    if (h2) { blocks.push({ type: 'h2', content: h2[1] }); i++; continue; }
+    if (h1) { blocks.push({ type: 'h1', content: h1[1] }); i++; continue; }
+
+    // Unordered list
+    if (line.match(/^[-*•] /)) {
+      const items = [];
+      while (i < lines.length && lines[i].match(/^[-*•] /)) {
+        items.push(lines[i].replace(/^[-*•] /, ''));
+        i++;
+      }
+      blocks.push({ type: 'ul', items });
+      continue;
+    }
+
+    // Ordered list
+    if (line.match(/^\d+[.)]\s/)) {
+      const items = [];
+      while (i < lines.length && lines[i].match(/^\d+[.)]\s/)) {
+        items.push(lines[i].replace(/^\d+[.)]\s/, ''));
+        i++;
+      }
+      blocks.push({ type: 'ol', items });
+      continue;
+    }
+
+    // Empty line → skip
+    if (line.trim() === '') { i++; continue; }
+
+    // Paragraph (collect consecutive text lines)
+    const textLines = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== '' &&
+      !lines[i].match(/^[#\-*•]/) &&
+      !lines[i].match(/^\d+[.)]\s/) &&
+      !lines[i].startsWith('```')
+    ) {
+      textLines.push(lines[i]);
+      i++;
+    }
+    if (textLines.length) blocks.push({ type: 'p', content: textLines.join('\n') });
+  }
+
+  return blocks;
+}
+
+function InlineHtml({ text }) {
+  return <span dangerouslySetInnerHTML={{ __html: renderInlineHtml(text) }} />;
+}
+
+function MarkdownRenderer({ content }) {
+  const blocks = parseBlocks(content);
+  return (
+    <div className="space-y-1.5 text-sm leading-relaxed">
+      {blocks.map((block, idx) => {
+        switch (block.type) {
+          case 'h1': return <p key={idx} className="font-bold text-base mt-1"><InlineHtml text={block.content} /></p>;
+          case 'h2': return <p key={idx} className="font-semibold text-sm mt-1"><InlineHtml text={block.content} /></p>;
+          case 'h3': return <p key={idx} className="font-medium text-sm mt-1"><InlineHtml text={block.content} /></p>;
+          case 'code': return (
+            <pre key={idx} className="bg-gray-100 rounded-lg p-3 text-xs overflow-x-auto my-1 font-mono whitespace-pre-wrap">
+              <code>{block.content}</code>
+            </pre>
+          );
+          case 'ul': return (
+            <ul key={idx} className="list-disc ml-4 space-y-0.5">
+              {block.items.map((item, j) => <li key={j}><InlineHtml text={item} /></li>)}
+            </ul>
+          );
+          case 'ol': return (
+            <ol key={idx} className="list-decimal ml-4 space-y-0.5">
+              {block.items.map((item, j) => <li key={j}><InlineHtml text={item} /></li>)}
+            </ol>
+          );
+          case 'p': return <p key={idx}><InlineHtml text={block.content} /></p>;
+          default: return null;
+        }
+      })}
+    </div>
+  );
+}
+
+// ── Message bubbles ──────────────────────────────────────────────────────────
 
 function MessageBubble({ msg }) {
   const isUser = msg.role === 'user';
   return (
     <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
-      {/* Avatar */}
       <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
         isUser ? 'bg-blue-500' : 'bg-purple-100'
       }`}>
@@ -25,13 +149,15 @@ function MessageBubble({ msg }) {
         }
       </div>
 
-      {/* Bubble */}
-      <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+      <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${
         isUser
-          ? 'bg-blue-500 text-white rounded-tr-sm'
+          ? 'bg-blue-500 text-white rounded-tr-sm text-sm leading-relaxed whitespace-pre-wrap'
           : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm'
       }`}>
-        {msg.content}
+        {isUser
+          ? msg.content
+          : <MarkdownRenderer content={msg.content} />
+        }
       </div>
     </div>
   );
@@ -43,12 +169,42 @@ function TypingBubble({ text }) {
       <div className="shrink-0 w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
         <Bot size={15} className="text-purple-600" />
       </div>
-      <div className="max-w-[75%] rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap bg-white border border-gray-200 text-gray-800 shadow-sm">
-        {text || <span className="flex gap-1 items-center text-gray-400"><Loader2 size={14} className="animate-spin" /> Думаю...</span>}
+      <div className="max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3 bg-white border border-gray-200 text-gray-800 shadow-sm">
+        {text
+          ? <MarkdownRenderer content={text} />
+          : <span className="flex gap-1 items-center text-gray-400 text-sm"><Loader2 size={14} className="animate-spin" /> Думаю...</span>
+        }
       </div>
     </div>
   );
 }
+
+// ── API key banner ───────────────────────────────────────────────────────────
+
+function ApiKeyBanner() {
+  return (
+    <div className="mx-4 mb-3 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-3">
+      <Key size={16} className="text-amber-500 shrink-0 mt-0.5" />
+      <div className="text-xs text-amber-800">
+        <p className="font-semibold mb-1">Требуется API ключ Anthropic</p>
+        <p className="mb-1">Добавьте ключ в файл <code className="bg-amber-100 px-1 rounded">backend/.env</code>:</p>
+        <code className="block bg-amber-100 rounded p-1.5 font-mono text-xs">
+          ANTHROPIC_API_KEY=sk-ant-api03-...
+        </code>
+        <a
+          href="https://console.anthropic.com/settings/keys"
+          target="_blank"
+          rel="noreferrer"
+          className="mt-1.5 flex items-center gap-0.5 text-amber-700 hover:text-amber-900 font-medium"
+        >
+          Получить ключ <ChevronRight size={12} />
+        </a>
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ───────────────────────────────────────────────────────────
 
 export default function AIAssistant() {
   const [history, setHistory] = useState([]);
@@ -56,6 +212,7 @@ export default function AIAssistant() {
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState('');
   const [error, setError] = useState(null);
+  const [apiKeyMissing, setApiKeyMissing] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const abortRef = useRef(null);
@@ -64,17 +221,18 @@ export default function AIAssistant() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [history, streamText]);
 
-  async function sendMessage(text) {
+  const sendMessage = useCallback(async (text) => {
     const userMsg = text.trim();
     if (!userMsg || streaming) return;
 
     setError(null);
+    setApiKeyMissing(false);
     setInput('');
     setStreaming(true);
     setStreamText('');
 
-    const newHistory = [...history, { role: 'user', content: userMsg }];
-    setHistory(newHistory);
+    const prevHistory = [...history];
+    setHistory(prev => [...prev, { role: 'user', content: userMsg }]);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -87,10 +245,7 @@ export default function AIAssistant() {
           'Content-Type': 'application/json',
           ...(authHeader ? { Authorization: authHeader } : {}),
         },
-        body: JSON.stringify({
-          message: userMsg,
-          history: history, // send previous history (without the new message)
-        }),
+        body: JSON.stringify({ message: userMsg, history: prevHistory }),
         signal: controller.signal,
       });
 
@@ -114,29 +269,33 @@ export default function AIAssistant() {
 
         for (const part of parts) {
           if (!part.startsWith('data: ')) continue;
-          const raw = part.slice(6);
+          const raw = part.slice(6).trim();
           if (raw === '[DONE]') break;
 
           try {
             const data = JSON.parse(raw);
-            if (data.error) throw new Error(data.error);
+            if (data.error) {
+              if (data.error.includes('ANTHROPIC_API_KEY') || data.error.includes('401')) {
+                setApiKeyMissing(true);
+              }
+              throw new Error(data.error);
+            }
             if (data.text) {
               fullText += data.text;
               setStreamText(fullText);
             }
           } catch (parseErr) {
-            if (parseErr.message !== 'Unexpected end of JSON input') {
-              throw parseErr;
-            }
+            if (parseErr.message !== 'Unexpected end of JSON input') throw parseErr;
           }
         }
       }
 
-      // Commit streamed response to history
       setHistory(prev => [...prev, { role: 'assistant', content: fullText }]);
     } catch (err) {
       if (err.name !== 'AbortError') {
-        setError(err.message || 'Ошибка при обращении к ИИ-ассистенту');
+        const msg = err.message || 'Ошибка при обращении к ИИ-ассистенту';
+        if (msg.includes('ANTHROPIC_API_KEY') || msg.includes('401')) setApiKeyMissing(true);
+        setError(msg);
       }
     } finally {
       setStreaming(false);
@@ -144,7 +303,7 @@ export default function AIAssistant() {
       abortRef.current = null;
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }
+  }, [history, streaming]);
 
   function handleKeyDown(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -157,6 +316,7 @@ export default function AIAssistant() {
     setHistory([]);
     setError(null);
     setInput('');
+    setApiKeyMissing(false);
   }
 
   function stopStreaming() {
@@ -175,7 +335,7 @@ export default function AIAssistant() {
           </div>
           <div>
             <h1 className="text-lg font-semibold text-gray-900">ИИ-ассистент</h1>
-            <p className="text-xs text-gray-500">Отвечает на вопросы по данным системы</p>
+            <p className="text-xs text-gray-500">Работает на Claude (Anthropic) · Знает все данные системы</p>
           </div>
         </div>
         {history.length > 0 && (
@@ -196,11 +356,10 @@ export default function AIAssistant() {
             <div className="w-16 h-16 rounded-2xl bg-purple-100 flex items-center justify-center mb-4">
               <Bot size={28} className="text-purple-500" />
             </div>
-            <h2 className="text-xl font-semibold text-gray-800 mb-1">Добро пожаловать!</h2>
+            <h2 className="text-xl font-semibold text-gray-800 mb-1">ИИ-ассистент ContractPro</h2>
             <p className="text-gray-500 text-sm mb-8 max-w-sm">
               Задайте вопрос о договорах, клиентах, заказах, платежах или рекламациях
             </p>
-            {/* Suggestions */}
             <div className="w-full max-w-lg">
               <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-3 justify-center">
                 <Lightbulb size={12} />
@@ -221,9 +380,7 @@ export default function AIAssistant() {
           </div>
         )}
 
-        {history.map((msg, i) => (
-          <MessageBubble key={i} msg={msg} />
-        ))}
+        {history.map((msg, i) => <MessageBubble key={i} msg={msg} />)}
 
         {streaming && <TypingBubble text={streamText} />}
 
@@ -232,7 +389,7 @@ export default function AIAssistant() {
             <div className="shrink-0 w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
               <Bot size={15} className="text-red-500" />
             </div>
-            <div className="max-w-[75%] rounded-2xl rounded-tl-sm px-4 py-3 text-sm bg-red-50 border border-red-200 text-red-700">
+            <div className="max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-3 text-sm bg-red-50 border border-red-200 text-red-700">
               <strong>Ошибка:</strong> {error}
             </div>
           </div>
@@ -241,9 +398,11 @@ export default function AIAssistant() {
         <div ref={bottomRef} />
       </div>
 
+      {/* API key banner */}
+      {apiKeyMissing && <ApiKeyBanner />}
+
       {/* Input */}
       <div className="bg-white border-t border-gray-200 px-4 py-3 shrink-0">
-        {/* Compact suggestions when chat is active */}
         {!isEmpty && !streaming && (
           <div className="flex gap-2 mb-2 overflow-x-auto pb-1 scrollbar-hide">
             {SUGGESTIONS.slice(0, 4).map((s) => (
@@ -294,7 +453,7 @@ export default function AIAssistant() {
           )}
         </div>
         <p className="text-xs text-gray-400 mt-1.5 text-center">
-          Shift+Enter для новой строки
+          Shift+Enter для новой строки · Claude Opus 4.6
         </p>
       </div>
     </div>

@@ -78,10 +78,27 @@ function buildSystemPrompt() {
   const t = (v) => statusLabels[v] || v || '—';
   const rub = (v) => v != null ? `${Number(v).toLocaleString('ru-RU')} ₽` : '—';
 
+  // Key metrics for quick overview
+  const overduePayments = payments.filter(p => p.status === 'overdue');
+  const overdueTotal = overduePayments.reduce((s, p) => s + (p.amount || 0), 0);
+  const activeContracts = contracts.filter(c => c.status === 'active');
+  const openClaims = claims.filter(c => c.status === 'open' || c.status === 'in_review');
+  const upcomingShipments = orders.filter(o =>
+    o.status !== 'completed' && o.status !== 'shipped' && o.shipment_deadline &&
+    new Date(o.shipment_deadline) >= new Date(today)
+  ).sort((a, b) => new Date(a.shipment_deadline) - new Date(b.shipment_deadline));
+
   return `Ты — ИИ-ассистент системы управления договорами ContractPro.
 Помогаешь сотрудникам находить информацию по клиентам, договорам, заказам, платежам, отгрузкам и рекламациям.
-Отвечай на русском языке, кратко и по существу. Используй маркированные списки и структуру при необходимости.
+Отвечай на русском языке, чётко и по существу. Используй маркированные списки и структуру там, где это улучшает читаемость.
+При ответе опирайся ТОЛЬКО на данные ниже. Если данных нет — так и скажи.
 Сегодняшняя дата: ${today}
+
+=== СВОДКА ===
+- Активных договоров: ${activeContracts.length}, на сумму ${rub(activeContracts.reduce((s, c) => s + (c.amount || 0), 0))}
+- Просроченных платежей: ${overduePayments.length}${overduePayments.length ? `, общая сумма ${rub(overdueTotal)}` : ''}
+- Открытых рекламаций: ${openClaims.length}
+- Ближайший срок отгрузки: ${upcomingShipments[0] ? `Заказ №${upcomingShipments[0].number} до ${upcomingShipments[0].shipment_deadline}` : 'нет'}
 
 === ДАННЫЕ СИСТЕМЫ ===
 
@@ -115,6 +132,12 @@ ${claims.map(c =>
   `- №${c.number} | ${c.counterparty_name || '—'} | Договор №${c.contract_number || '—'} | Статус: ${t(c.status)} | Срок: ${c.deadline || '—'} | Ответственный: ${c.responsible || '—'} | Описание: ${c.description || '—'}`
 ).join('\n') || 'Нет данных'}`;
 }
+
+// GET /api/ai-chat/status — check if API key is configured
+router.get('/status', (req, res) => {
+  const configured = !!(process.env.ANTHROPIC_API_KEY?.trim());
+  res.json({ configured });
+});
 
 // POST /api/ai-chat  — streaming SSE response
 router.post('/', async (req, res) => {
