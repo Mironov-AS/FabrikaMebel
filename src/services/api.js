@@ -62,6 +62,7 @@ export const invoicesApi = {
   update: (id, data) => api.put(`/invoices/${id}`, data),
   addPayment: (id, amount, paidDate, notes) => api.post(`/invoices/${id}/payments`, { amount, paidDate, notes }),
   deletePayment: (id, paymentId) => api.delete(`/invoices/${id}/payments/${paymentId}`),
+  deactivate: (id) => api.patch(`/invoices/${id}/deactivate`),
 };
 
 // Payments API

@@ -281,6 +281,10 @@ const invoiceCols = db.pragma('table_info(invoices)').map(c => c.name);
 if (!invoiceCols.includes('invoice_date')) {
   db.exec('ALTER TABLE invoices ADD COLUMN invoice_date TEXT');
 }
+// Add is_active to invoices if missing (1 = active, 0 = deactivated/voided)
+if (!invoiceCols.includes('is_active')) {
+  db.exec('ALTER TABLE invoices ADD COLUMN is_active INTEGER DEFAULT 1');
+}
 
 // Contract files table
 db.exec(`

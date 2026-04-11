@@ -189,6 +189,11 @@ const useAppStore = create((set, get) => ({
     set({ orders: ordersRes.data, payments: paymentsRes.data });
     return data;
   },
+  deactivateInvoice: async (id) => {
+    const { data } = await invoicesApi.deactivate(id);
+    set(s => ({ invoices: s.invoices.map(inv => inv.id === id ? data : inv) }));
+    return data;
+  },
 
   // ─── Payments ────────────────────────────────────────────
 

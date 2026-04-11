@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   CreditCard, AlertCircle, Clock, CheckCircle,
   ChevronDown, ChevronRight, Building2, FileText,
-  Plus, Trash2, Receipt,
+  Plus, Trash2, Receipt, XCircle, History,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { formatMoney } from '../../data/mockData';
@@ -13,22 +13,25 @@ import StatCard from '../../components/ui/StatCard';
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 const INV_STYLES = {
-  paid:    'bg-green-100 text-green-700 border border-green-200',
-  overdue: 'bg-red-100 text-red-700 border border-red-200',
-  partial: 'bg-blue-100 text-blue-700 border border-blue-200',
-  pending: 'bg-yellow-100 text-yellow-700 border border-yellow-200',
+  paid:       'bg-green-100 text-green-700 border border-green-200',
+  overdue:    'bg-red-100 text-red-700 border border-red-200',
+  partial:    'bg-blue-100 text-blue-700 border border-blue-200',
+  pending:    'bg-yellow-100 text-yellow-700 border border-yellow-200',
+  inactive:   'bg-gray-100 text-gray-400 border border-gray-200',
 };
 const INV_LABELS = {
-  paid:    'Оплачен',
-  overdue: 'Просрочен',
-  partial: 'Частично',
-  pending: 'Ожидается',
+  paid:       'Оплачен',
+  overdue:    'Просрочен',
+  partial:    'Частично',
+  pending:    'Ожидается',
+  inactive:   'Аннулирован',
 };
 
-function InvoiceBadge({ status }) {
+function InvoiceBadge({ status, inactive }) {
+  const key = inactive ? 'inactive' : status;
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${INV_STYLES[status] || INV_STYLES.pending}`}>
-      {INV_LABELS[status] || status}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${INV_STYLES[key] || INV_STYLES.pending}`}>
+      {INV_LABELS[key] || status}
     </span>
   );
 }
@@ -240,7 +243,7 @@ export default function PaymentsPage() {
   const [createInvoiceFor, setCreateInvoiceFor] = useState(null);
   const [addPaymentFor, setAddPaymentFor] = useState(null);
 
-  const { invoices, orders, contracts, counterparties, createInvoice, addInvoicePayment, deleteInvoicePayment } = useAppStore();
+  const { invoices, orders, contracts, counterparties, createInvoice, addInvoicePayment, deleteInvoicePayment, deactivateInvoice } = useAppStore();
 
   useEffect(() => {
     if (counterparties.length > 0) setExpandedCps(new Set(counterparties.map(c => c.id)));
@@ -250,7 +253,10 @@ export default function PaymentsPage() {
   }, [contracts.length]);
 
   // ── Helpers ───────────────────────────────────────────────────────────
-  const orderInvoice = (orderId) => invoices.find(inv => inv.orderId === orderId);
+  // Active (current) invoice for an order
+  const orderInvoice = (orderId) => invoices.find(inv => inv.orderId === orderId && inv.isActive);
+  // All voided/inactive previous invoices for an order
+  const orderVoidedInvoices = (orderId) => invoices.filter(inv => inv.orderId === orderId && !inv.isActive);
 
   const calcPenalty = (invoice) => {
     if (invoice.status !== 'overdue') return 0;
@@ -258,14 +264,15 @@ export default function PaymentsPage() {
     return days * (invoice.amount - invoice.paidAmount) * 0.001;
   };
 
-  // ── Summary stats ─────────────────────────────────────────────────────
+  // ── Summary stats — only active invoices ──────────────────────────────
   const TODAY = new Date();
-  const unpaidInvoices = invoices.filter(inv => inv.status !== 'paid');
+  const activeInvoices = invoices.filter(inv => inv.isActive);
+  const unpaidInvoices = activeInvoices.filter(inv => inv.status !== 'paid');
   const totalReceivable = unpaidInvoices.reduce((s, inv) => s + Math.max(0, inv.amount - inv.paidAmount), 0);
-  const overdueInvoices = invoices.filter(inv => inv.status === 'overdue');
+  const overdueInvoices = activeInvoices.filter(inv => inv.status === 'overdue');
   const totalOverdue    = overdueInvoices.reduce((s, inv) => s + Math.max(0, inv.amount - inv.paidAmount), 0);
   const in7Days = new Date(TODAY); in7Days.setDate(in7Days.getDate() + 7);
-  const upcomingInvoices = invoices.filter(inv => {
+  const upcomingInvoices = activeInvoices.filter(inv => {
     if (inv.status === 'paid') return false;
     const d = new Date(inv.dueDate);
     return d >= TODAY && d <= in7Days;
@@ -317,6 +324,15 @@ export default function PaymentsPage() {
   async function handleDeletePayment(invoiceId, paymentId) {
     if (!confirm('Удалить эту запись об оплате?')) return;
     await deleteInvoicePayment(invoiceId, paymentId);
+  }
+
+  async function handleDeactivateInvoice(invoice) {
+    if (!confirm(`Аннулировать счёт ${invoice.invoiceNumber}?\n\nЭтот счёт станет неактивным, и вы сможете выставить новый счёт для этого заказа.`)) return;
+    try {
+      await deactivateInvoice(invoice.id);
+    } catch (e) {
+      alert(e?.response?.data?.error || 'Ошибка при аннулировании счёта');
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -452,11 +468,13 @@ export default function PaymentsPage() {
                                     key={order.id}
                                     order={order}
                                     invoice={order.invoice}
+                                    voidedInvoices={orderVoidedInvoices(order.id)}
                                     isExpanded={expandedOrders.has(order.id)}
-                                    onToggle={() => order.invoice && toggleOrder(order.id)}
+                                    onToggle={() => (order.invoice || orderVoidedInvoices(order.id).length > 0) && toggleOrder(order.id)}
                                     onCreateInvoice={() => setCreateInvoiceFor(order)}
                                     onAddPayment={(inv) => setAddPaymentFor(inv)}
                                     onDeletePayment={handleDeletePayment}
+                                    onDeactivate={handleDeactivateInvoice}
                                     calcPenalty={calcPenalty}
                                   />
                                 ))}
@@ -677,39 +695,49 @@ export default function PaymentsPage() {
                   const cp    = counterparties.find(c => c.id === inv.counterpartyId);
                   const remaining = Math.max(0, inv.amount - inv.paidAmount);
                   const overdue = inv.status === 'overdue';
+                  const isInactive = !inv.isActive;
                   return (
-                    <tr key={inv.id} className={overdue ? 'bg-red-50' : 'hover:bg-gray-50 transition-colors'}>
+                    <tr key={inv.id} className={isInactive ? 'bg-gray-50 opacity-60' : overdue ? 'bg-red-50' : 'hover:bg-gray-50 transition-colors'}>
                       <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{cp?.name ?? '—'}</td>
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{order?.number ?? '—'}</td>
                       <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
-                          <Receipt size={13} className="text-gray-400" />
-                          {inv.invoiceNumber}
+                          <Receipt size={13} className={isInactive ? 'text-gray-300' : 'text-gray-400'} />
+                          <span className={isInactive ? 'line-through text-gray-400' : ''}>{inv.invoiceNumber}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">{formatMoney(inv.amount)}</td>
+                      <td className={`px-4 py-3 font-semibold whitespace-nowrap ${isInactive ? 'text-gray-400' : 'text-gray-900'}`}>{formatMoney(inv.amount)}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         {inv.paidAmount > 0
                           ? <span className="text-green-700 font-medium">{formatMoney(inv.paidAmount)}</span>
                           : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {remaining > 0
+                        {!isInactive && remaining > 0
                           ? <span className="text-orange-600 font-medium">{formatMoney(remaining)}</span>
                           : <span className="text-green-600">—</span>}
                       </td>
                       <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                        <span className={overdue ? 'text-red-600 font-medium' : ''}>
+                        <span className={overdue && !isInactive ? 'text-red-600 font-medium' : ''}>
                           {inv.dueDate || '—'}
-                          {overdue && <span className="ml-1 text-xs">({daysDiff(inv.dueDate)} дн.)</span>}
+                          {overdue && !isInactive && <span className="ml-1 text-xs">({daysDiff(inv.dueDate)} дн.)</span>}
                         </span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap"><InvoiceBadge status={inv.status} /></td>
+                      <td className="px-4 py-3 whitespace-nowrap"><InvoiceBadge status={inv.status} inactive={isInactive} /></td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {inv.status !== 'paid' && (
-                          <button className="btn-secondary text-xs py-1 px-2" onClick={() => setAddPaymentFor(inv)}>
-                            Оплата
-                          </button>
+                        {!isInactive && inv.status !== 'paid' && (
+                          <div className="flex items-center gap-2">
+                            <button className="btn-secondary text-xs py-1 px-2" onClick={() => setAddPaymentFor(inv)}>
+                              Оплата
+                            </button>
+                            <button
+                              className="text-gray-400 hover:text-red-500 transition-colors"
+                              title="Аннулировать счёт"
+                              onClick={() => handleDeactivateInvoice(inv)}
+                            >
+                              <XCircle size={15} />
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -740,21 +768,22 @@ export default function PaymentsPage() {
 }
 
 // ── OrderRow ──────────────────────────────────────────────────────────────────
-function OrderRow({ order, invoice, isExpanded, onToggle, onCreateInvoice, onAddPayment, onDeletePayment, calcPenalty }) {
+function OrderRow({ order, invoice, voidedInvoices = [], isExpanded, onToggle, onCreateInvoice, onAddPayment, onDeletePayment, onDeactivate, calcPenalty }) {
   const hasInstallments = invoice?.installments?.length > 0;
   const remaining = invoice ? Math.max(0, invoice.amount - invoice.paidAmount) : 0;
   const overdue = invoice?.status === 'overdue';
+  const hasHistory = voidedInvoices.length > 0;
 
   return (
     <>
       <tr
-        className={`border-b border-gray-100 transition-colors ${invoice ? 'cursor-pointer' : ''} ${isExpanded ? 'bg-indigo-50/40' : 'hover:bg-gray-100/60'}`}
+        className={`border-b border-gray-100 transition-colors ${(invoice || hasHistory) ? 'cursor-pointer' : ''} ${isExpanded ? 'bg-indigo-50/40' : 'hover:bg-gray-100/60'}`}
         onClick={onToggle}
       >
         {/* Order number */}
         <td className="pl-10 pr-3 py-3">
           <div className="flex items-center gap-2">
-            {invoice
+            {(invoice || hasHistory)
               ? isExpanded
                 ? <ChevronDown size={14} className="text-indigo-400 flex-shrink-0" />
                 : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />
@@ -780,13 +809,20 @@ function OrderRow({ order, invoice, isExpanded, onToggle, onCreateInvoice, onAdd
             ? <div className="flex items-center gap-1.5 text-gray-700">
                 <Receipt size={13} className="text-gray-400" />
                 <span className="font-medium">{invoice.invoiceNumber}</span>
+                {hasHistory && (
+                  <span className="inline-flex items-center gap-0.5 text-xs text-gray-400" title={`${voidedInvoices.length} аннулированных счёта`}>
+                    <History size={11} /> {voidedInvoices.length}
+                  </span>
+                )}
               </div>
-            : <button
-                className="flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 font-medium"
-                onClick={e => { e.stopPropagation(); onCreateInvoice(); }}
-              >
-                <Plus size={13} /> Создать счёт
-              </button>}
+            : <div className="flex items-center gap-2">
+                <button
+                  className="flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 font-medium"
+                  onClick={e => { e.stopPropagation(); onCreateInvoice(); }}
+                >
+                  <Plus size={13} /> {hasHistory ? 'Выставить новый' : 'Создать счёт'}
+                </button>
+              </div>}
         </td>
 
         {/* Paid / Remaining */}
@@ -807,12 +843,21 @@ function OrderRow({ order, invoice, isExpanded, onToggle, onCreateInvoice, onAdd
         {/* Action */}
         <td className="px-4 py-3 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
           {invoice && invoice.status !== 'paid' && (
-            <button
-              className="btn-secondary text-xs py-1 px-2"
-              onClick={() => onAddPayment(invoice)}
-            >
-              + Оплата
-            </button>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                className="btn-secondary text-xs py-1 px-2"
+                onClick={() => onAddPayment(invoice)}
+              >
+                + Оплата
+              </button>
+              <button
+                className="text-gray-400 hover:text-red-500 transition-colors"
+                title="Аннулировать счёт и выставить новый"
+                onClick={() => onDeactivate(invoice)}
+              >
+                <XCircle size={15} />
+              </button>
+            </div>
           )}
         </td>
       </tr>
@@ -871,6 +916,35 @@ function OrderRow({ order, invoice, isExpanded, onToggle, onCreateInvoice, onAdd
               <td className="pl-14 pr-3 py-2.5 text-gray-400 italic" colSpan={7}>Платежей ещё нет</td>
             </tr>
           )}
+        </>
+      )}
+
+      {/* Voided invoice history — shown when expanded (even without active invoice) */}
+      {isExpanded && hasHistory && (
+        <>
+          <tr className="border-b border-gray-100 bg-gray-50/60">
+            <td className="pl-14 pr-3 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wide" colSpan={7}>
+              <div className="flex items-center gap-1.5">
+                <History size={11} /> История аннулированных счетов
+              </div>
+            </td>
+          </tr>
+          {voidedInvoices.map(vi => (
+            <tr key={`voided-${vi.id}`} className="border-b border-gray-100 text-xs bg-gray-50/40 opacity-70">
+              <td className="pl-14 pr-3 py-2" colSpan={3}>
+                <div className="flex items-center gap-2 text-gray-400">
+                  <XCircle size={11} className="text-gray-300 flex-shrink-0" />
+                  <span className="line-through">{vi.invoiceNumber}</span>
+                  <span className="text-gray-300">·</span>
+                  <span>от {vi.invoiceDate || vi.createdAt?.slice(0,10)}</span>
+                  {vi.notes && <span className="italic text-gray-300">— {vi.notes}</span>}
+                </div>
+              </td>
+              <td className="px-4 py-2 text-gray-400 line-through">{formatMoney(vi.amount)}</td>
+              <td className="px-4 py-2 text-gray-400">{vi.paidAmount > 0 ? formatMoney(vi.paidAmount) : '—'}</td>
+              <td className="px-4 py-2" colSpan={2}><InvoiceBadge status={vi.status} inactive={true} /></td>
+            </tr>
+          ))}
         </>
       )}
     </>

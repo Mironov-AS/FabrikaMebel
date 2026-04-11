@@ -23,6 +23,7 @@ function buildInvoice(row) {
     counterpartyId: row.counterparty_id,
     notes: row.notes,
     createdAt: row.created_at,
+    isActive: row.is_active !== 0,
     installments: installments.map(buildInstallment),
   };
 }
@@ -79,9 +80,9 @@ router.post('/', requireRole('admin', 'accountant', 'director', 'sales_manager')
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
   if (!order) return res.status(404).json({ error: 'Заказ не найден' });
 
-  // Only one invoice per order
-  const existing = db.prepare('SELECT id FROM invoices WHERE order_id = ?').get(orderId);
-  if (existing) return res.status(400).json({ error: 'Счёт на этот заказ уже существует' });
+  // Only one ACTIVE invoice per order allowed
+  const existing = db.prepare('SELECT id FROM invoices WHERE order_id = ? AND is_active = 1').get(orderId);
+  if (existing) return res.status(400).json({ error: 'Активный счёт на этот заказ уже существует. Деактивируйте текущий счёт перед выставлением нового.' });
 
   const safeInvoiceNumber = sanitizeStr(invoiceNumber);
   const safeNotes = notes ? sanitizeStr(notes) : null;
@@ -108,10 +109,23 @@ router.post('/', requireRole('admin', 'accountant', 'director', 'sales_manager')
   res.status(201).json(buildInvoice(db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid)));
 });
 
+// PATCH /api/invoices/:id/deactivate — deactivate (void) an invoice so a new one can be issued
+router.patch('/:id/deactivate', requireRole('admin', 'accountant', 'director'), (req, res) => {
+  const inv = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+  if (!inv) return res.status(404).json({ error: 'Счёт не найден' });
+  if (inv.is_active === 0) return res.status(400).json({ error: 'Счёт уже деактивирован' });
+  if (inv.status === 'paid') return res.status(400).json({ error: 'Нельзя деактивировать полностью оплаченный счёт' });
+
+  db.prepare('UPDATE invoices SET is_active = 0 WHERE id = ?').run(inv.id);
+  logAudit(req.user.id, req.user.name, `Деактивирован счёт ${inv.invoice_number} (заказ #${inv.order_id})`, 'Счёт', inv.id, req.ip);
+  res.json(buildInvoice(db.prepare('SELECT * FROM invoices WHERE id = ?').get(inv.id)));
+});
+
 // PUT /api/invoices/:id — update invoice (number, dueDate, amount, notes)
 router.put('/:id', requireRole('admin', 'accountant', 'director'), (req, res) => {
   const inv = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
   if (!inv) return res.status(404).json({ error: 'Счёт не найден' });
+  if (inv.is_active === 0) return res.status(400).json({ error: 'Нельзя редактировать деактивированный счёт' });
   if (inv.status === 'paid') return res.status(400).json({ error: 'Нельзя редактировать оплаченный счёт' });
 
   const { invoiceNumber, invoiceDate, dueDate, amount, notes } = req.body;
@@ -136,6 +150,7 @@ router.put('/:id', requireRole('admin', 'accountant', 'director'), (req, res) =>
 router.post('/:id/payments', requireRole('admin', 'accountant', 'director'), (req, res) => {
   const inv = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
   if (!inv) return res.status(404).json({ error: 'Счёт не найден' });
+  if (inv.is_active === 0) return res.status(400).json({ error: 'Нельзя добавить оплату к деактивированному счёту' });
   if (inv.status === 'paid') return res.status(400).json({ error: 'Счёт уже полностью оплачен' });
 
   const { amount, paidDate, notes } = req.body;
