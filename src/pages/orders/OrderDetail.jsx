@@ -69,13 +69,15 @@ function SpecificationTab({ order, onCreateShipment, isWarehouse }) {
         <p className="text-sm text-gray-500">
           Позиций: <strong className="text-gray-800">{spec.length}</strong>
         </p>
-        <button
-          className="btn-primary flex items-center gap-1.5"
-          onClick={onCreateShipment}
-        >
-          <TruckIcon size={14} />
-          Создать отгрузку
-        </button>
+        {isWarehouse && (
+          <button
+            className="btn-primary flex items-center gap-1.5"
+            onClick={onCreateShipment}
+          >
+            <TruckIcon size={14} />
+            Создать отгрузку
+          </button>
+        )}
       </div>
 
       <Table columns={columns} data={spec} />
