@@ -31,13 +31,17 @@ vi.mock('../services/api', () => ({
     update: vi.fn(),
     delete: vi.fn(),
   },
+  invoicesApi: { list: vi.fn(), create: vi.fn(), update: vi.fn() },
+  nomenclatureApi: { create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+  driversApi: { list: vi.fn(), create: vi.fn(), update: vi.fn() },
+  deliveryRoutesApi: { list: vi.fn(), create: vi.fn() },
 }));
 
 import useAppStore from './appStore';
 import {
   contractsApi, ordersApi, shipmentsApi, paymentsApi,
   claimsApi, notificationsApi, productionApi, chatApi,
-  auditApi, usersApi, counterpartiesApi,
+  auditApi, usersApi, counterpartiesApi, invoicesApi,
 } from '../services/api';
 
 // Helper: reset Zustand store state between tests
@@ -85,6 +89,7 @@ describe('loadAll', () => {
     contractsApi.list.mockResolvedValue({ data: [{ id: 1, number: 'C-001' }] });
     ordersApi.list.mockResolvedValue({ data: [{ id: 10 }] });
     shipmentsApi.list.mockResolvedValue({ data: [] });
+    invoicesApi.list.mockResolvedValue({ data: [] });
     paymentsApi.list.mockResolvedValue({ data: [] });
     claimsApi.list.mockResolvedValue({ data: [] });
     notificationsApi.list.mockResolvedValue({ data: [] });
@@ -113,6 +118,7 @@ describe('loadAll', () => {
     contractsApi.list.mockRejectedValue(new Error('Network error'));
     ordersApi.list.mockRejectedValue(new Error('Network error'));
     shipmentsApi.list.mockRejectedValue(new Error('Network error'));
+    invoicesApi.list.mockRejectedValue(new Error('Network error'));
     paymentsApi.list.mockRejectedValue(new Error('Network error'));
     claimsApi.list.mockRejectedValue(new Error('Network error'));
     notificationsApi.list.mockRejectedValue(new Error('Network error'));
