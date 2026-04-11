@@ -21,7 +21,7 @@ const MONTH_NAMES_RU = ['Январь','Февраль','Март','Апрель
 const DAY_NAMES_RU = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
 
 // ─── New Shipment Modal ───────────────────────────────────────────────────────
-function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, onSave, isWarehouse }) {
+function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, onSave, isWarehouse, shipments }) {
   const [form, setForm] = useState({
     orderId: '',
     scheduledDate: new Date().toISOString().slice(0, 10),
@@ -45,12 +45,26 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
     const ordId = e.target.value;
     const ord = orders.find(o => o.id === parseInt(ordId, 10));
     const cpForOrder = ord ? counterparties.find(c => c.id === (ord.counterpartyId || ord.counterparty_id)) : null;
-    setForm(prev => ({
-      ...prev,
-      orderId: ordId,
-      scheduledDate: ord?.shipmentDeadline || ord?.shipment_deadline || prev.scheduledDate,
-      deliveryAddress: prev.deliveryType === 'delivery' ? (cpForOrder?.address || '') : prev.deliveryAddress,
-    }));
+    // Check if a shipment already exists for this order — pre-fill its data
+    const existingShipment = ord && shipments ? shipments.find(s => s.orderId === ord.id || s.order_id === ord.id) : null;
+    if (existingShipment) {
+      setForm(prev => ({
+        ...prev,
+        orderId: ordId,
+        scheduledDate: existingShipment.scheduledDate || existingShipment.date || ord?.shipmentDeadline || ord?.shipment_deadline || prev.scheduledDate,
+        invoiceNumber: existingShipment.invoiceNumber || existingShipment.invoice_number || '',
+        amount: existingShipment.amount ? String(existingShipment.amount) : prev.amount,
+        deliveryType: existingShipment.deliveryType || existingShipment.delivery_type || 'pickup',
+        deliveryAddress: existingShipment.deliveryAddress || existingShipment.delivery_address || (cpForOrder?.address || ''),
+      }));
+    } else {
+      setForm(prev => ({
+        ...prev,
+        orderId: ordId,
+        scheduledDate: ord?.shipmentDeadline || ord?.shipment_deadline || prev.scheduledDate,
+        deliveryAddress: prev.deliveryType === 'delivery' ? (cpForOrder?.address || '') : prev.deliveryAddress,
+      }));
+    }
   };
 
   const handleDeliveryTypeChange = (type) => {
@@ -146,6 +160,13 @@ function NewShipmentModal({ isOpen, onClose, orders, contracts, counterparties, 
             </select>
           )}
         </div>
+
+        {selectedOrder && shipments?.find(s => s.orderId === selectedOrder.id || s.order_id === selectedOrder.id) && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-start gap-2 text-sm">
+            <CheckCircle size={15} className="text-blue-500 flex-shrink-0 mt-0.5" />
+            <p className="text-blue-800 text-xs">По этому заказу уже оформлена отгрузка — данные подтянуты автоматически.</p>
+          </div>
+        )}
 
         {selectedOrder && (
           <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-3 space-y-1.5 text-sm">
@@ -668,8 +689,19 @@ function ShipmentCalendar({ shipments, counterparties, routes, drivers, onCreate
     cells.push(new Date(year, month, d));
   }
 
-  const getDateStr = (d) => d ? d.toISOString().slice(0, 10) : null;
-  const todayStr = today.toISOString().slice(0, 10);
+  const getDateStr = (d) => {
+    if (!d) return null;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  const todayStr = (() => {
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  })();
 
   const shipmentsByDate = useMemo(() => {
     const map = {};
@@ -1068,6 +1100,7 @@ export default function ShipmentsPage() {
         orders={readyOrders}
         contracts={contracts}
         counterparties={counterparties}
+        shipments={shipments}
         onSave={handleSave}
         isWarehouse={isWarehouse}
       />
