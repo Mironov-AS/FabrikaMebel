@@ -54,6 +54,7 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/audit', require('./routes/audit'));
 app.use('/api/counterparties', require('./routes/counterparties'));
 app.use('/api/chat', require('./routes/chat'));
+app.use('/api/ai-chat', require('./routes/aiChat'));
 
 // Health check
 app.get('/api/health', (req, res) => {

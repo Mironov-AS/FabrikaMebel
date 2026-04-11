@@ -2,7 +2,7 @@ import {
   TrendingUp, Factory, Truck,
   CreditCard, BarChart3, Settings, AlertCircle,
   LayoutDashboard, FileText, ShoppingCart, MessageSquare,
-  ClipboardList, PackageCheck, Building2,
+  ClipboardList, PackageCheck, Building2, Bot,
 } from 'lucide-react';
 
 export const ALL_NAV_ITEMS = [
@@ -16,6 +16,7 @@ export const ALL_NAV_ITEMS = [
   { label: 'Рекламации',         icon: AlertCircle,     path: '/claims' },
   { label: 'Отчёты',             icon: BarChart3,       path: '/reports' },
   { label: 'Чат',                icon: MessageSquare,   path: '/chat' },
+  { label: 'ИИ-ассистент',       icon: Bot,             path: '/ai-assistant' },
   { label: 'Администрирование',  icon: Settings,        path: '/admin' },
 ];
 
@@ -30,7 +31,7 @@ export const SERVICES = [
     textColor: 'text-blue-700',
     borderColor: 'border-blue-200',
     description: 'Договоры, заказы, контрагенты и чат с клиентами',
-    navPaths: ['/contracts', '/counterparties', '/orders', '/chat'],
+    navPaths: ['/contracts', '/counterparties', '/orders', '/chat', '/ai-assistant'],
     defaultPath: '/contracts',
   },
   {
@@ -43,7 +44,7 @@ export const SERVICES = [
     textColor: 'text-red-700',
     borderColor: 'border-red-200',
     description: 'Учёт и обработка рекламаций по договорам',
-    navPaths: ['/claims'],
+    navPaths: ['/claims', '/ai-assistant'],
     defaultPath: '/claims',
   },
   {
@@ -56,7 +57,7 @@ export const SERVICES = [
     textColor: 'text-orange-700',
     borderColor: 'border-orange-200',
     description: 'Производственные задачи и планирование',
-    navPaths: ['/production', '/orders'],
+    navPaths: ['/production', '/orders', '/ai-assistant'],
     defaultPath: '/production',
   },
   {
@@ -69,7 +70,7 @@ export const SERVICES = [
     textColor: 'text-teal-700',
     borderColor: 'border-teal-200',
     description: 'Управление заказами, отгрузками и логистикой',
-    navPaths: ['/orders', '/shipments'],
+    navPaths: ['/orders', '/shipments', '/ai-assistant'],
     defaultPath: '/orders',
   },
   {
@@ -82,7 +83,7 @@ export const SERVICES = [
     textColor: 'text-emerald-700',
     borderColor: 'border-emerald-200',
     description: 'Платежи, договоры и финансовый контроль',
-    navPaths: ['/payments', '/contracts', '/reports'],
+    navPaths: ['/payments', '/contracts', '/reports', '/ai-assistant'],
     defaultPath: '/payments',
   },
   {
@@ -95,7 +96,7 @@ export const SERVICES = [
     textColor: 'text-purple-700',
     borderColor: 'border-purple-200',
     description: 'Аналитика, отчёты и контроль деятельности',
-    navPaths: ['/dashboard', '/contracts', '/orders', '/reports', '/claims'],
+    navPaths: ['/dashboard', '/contracts', '/orders', '/reports', '/claims', '/ai-assistant'],
     defaultPath: '/dashboard',
   },
   {
@@ -108,7 +109,7 @@ export const SERVICES = [
     textColor: 'text-gray-700',
     borderColor: 'border-gray-200',
     description: 'Настройки системы и управление',
-    navPaths: ['/admin'],
+    navPaths: ['/admin', '/ai-assistant'],
     defaultPath: '/admin',
   },
 ];
