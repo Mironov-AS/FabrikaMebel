@@ -374,4 +374,17 @@ db.exec(`
   );
 `);
 
+// Fix orders stuck in ready_for_shipment/scheduled_for_shipment when all items are already shipped
+{
+  const stuckOrders = db.prepare(
+    "SELECT id FROM orders WHERE status IN ('ready_for_shipment', 'scheduled_for_shipment')"
+  ).all();
+  for (const order of stuckOrders) {
+    const items = db.prepare('SELECT quantity, shipped FROM order_items WHERE order_id = ?').all(order.id);
+    if (items.length > 0 && items.every(i => (i.shipped || 0) >= i.quantity)) {
+      db.prepare("UPDATE orders SET status = 'shipped' WHERE id = ?").run(order.id);
+    }
+  }
+}
+
 module.exports = db;

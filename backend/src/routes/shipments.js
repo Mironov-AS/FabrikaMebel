@@ -89,9 +89,15 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
     }
   }
 
-  // Move linked order to 'scheduled_for_shipment' so it no longer appears in "ready for shipment" list
+  // Update linked order status based on remaining unshipped items
   if (orderId) {
-    db.prepare("UPDATE orders SET status = 'scheduled_for_shipment' WHERE id = ? AND status = 'ready_for_shipment'").run(orderId);
+    const allOrderItems = db.prepare('SELECT quantity, shipped FROM order_items WHERE order_id = ?').all(orderId);
+    const allFullyShipped = allOrderItems.length > 0 && allOrderItems.every(i => (i.shipped || 0) >= i.quantity);
+    if (allFullyShipped) {
+      db.prepare("UPDATE orders SET status = 'shipped' WHERE id = ? AND status NOT IN ('shipped', 'completed')").run(orderId);
+    } else {
+      db.prepare("UPDATE orders SET status = 'scheduled_for_shipment' WHERE id = ? AND status = 'ready_for_shipment'").run(orderId);
+    }
   }
 
   logAudit(req.user.id, req.user.name, `Зарегистрирована отгрузка ${safeInvoiceNumber}`, 'Отгрузка', shipmentId, req.ip);
@@ -106,9 +112,13 @@ router.put('/:id/confirm', requireRole('admin', 'sales_manager', 'director', 'pr
 
   db.prepare("UPDATE shipments SET status = 'shipped' WHERE id = ?").run(req.params.id);
 
-  // Move linked order to 'shipped' — awaiting payment
+  // Move linked order to 'shipped' — check all items are fully shipped
   if (shipment.order_id) {
-    db.prepare("UPDATE orders SET status = 'shipped' WHERE id = ? AND status NOT IN ('shipped', 'completed')").run(shipment.order_id);
+    const allOrderItems = db.prepare('SELECT quantity, shipped FROM order_items WHERE order_id = ?').all(shipment.order_id);
+    const allFullyShipped = allOrderItems.length === 0 || allOrderItems.every(i => (i.shipped || 0) >= i.quantity);
+    if (allFullyShipped) {
+      db.prepare("UPDATE orders SET status = 'shipped' WHERE id = ? AND status NOT IN ('shipped', 'completed')").run(shipment.order_id);
+    }
   }
 
   logAudit(req.user.id, req.user.name, `Подтверждена отгрузка ${shipment.invoice_number}`, 'Отгрузка', shipment.id, req.ip);
