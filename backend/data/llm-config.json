@@ -2,7 +2,7 @@
   "activeProvider": "yandex",
   "providers": {
     "yandex": {
-      "apiKey": "",
+      "apiKey": "YOUR_YANDEX_API_KEY",
       "folderId": "b1g0i9ec4ojktqk4t58k",
       "model": "deepseek-v32/latest",
       "temperature": 0.6,

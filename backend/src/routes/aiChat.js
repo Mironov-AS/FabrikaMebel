@@ -174,6 +174,63 @@ function yandexStream(apiKey, folderId, modelUri, messages, temperature, maxToke
   });
 }
 
+function yandexOpenAIStream(apiKey, folderId, modelUri, messages, temperature, maxTokens) {
+  // OpenAI-compatible endpoint for models not supported by gRPC API (e.g. DeepSeek)
+  const openAIMessages = messages.map((m) => ({ role: m.role, content: m.text }));
+  const body = JSON.stringify({
+    model: modelUri,
+    messages: openAIMessages,
+    temperature,
+    max_tokens: maxTokens,
+    stream: true,
+  });
+
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'llm.api.cloud.yandex.net',
+      path: '/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Authorization': `Api-Key ${apiKey}`,
+        'x-folder-id': folderId,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    }, (res) => { resolve(res); });
+
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+function pipeYandexOpenAIStream(httpRes, res) {
+  let buffer = '';
+  httpRes.on('data', (chunk) => {
+    buffer += chunk.toString('utf8');
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === 'data: [DONE]') continue;
+      const jsonStr = trimmed.startsWith('data: ') ? trimmed.slice(6) : trimmed;
+      try {
+        const json = JSON.parse(jsonStr);
+        const delta = json.choices?.[0]?.delta?.content;
+        if (delta) res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
+      } catch (_) {}
+    }
+  });
+  httpRes.on('end', () => {
+    res.write('data: [DONE]\n\n');
+    res.end();
+  });
+  httpRes.on('error', (err) => {
+    res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+    res.end();
+  });
+}
+
 async function handleYandex(res, pCfg, systemPrompt, history, message) {
   if (!pCfg.apiKey || !pCfg.folderId) {
     res.write(`data: ${JSON.stringify({ error: 'YANDEX_API_KEY или YANDEX_FOLDER_ID не заданы' })}\n\n`);
@@ -190,9 +247,47 @@ async function handleYandex(res, pCfg, systemPrompt, history, message) {
   if (httpRes.statusCode !== 200) {
     let errBody = '';
     httpRes.on('data', (c) => { errBody += c; });
-    httpRes.on('end', () => {
+    httpRes.on('end', async () => {
       let errMsg = 'Ошибка Yandex API';
-      try { errMsg = JSON.parse(errBody).error?.message || errMsg; } catch (_) {}
+      let isGrpcError = false;
+      try {
+        const parsed = JSON.parse(errBody);
+        errMsg = parsed.error?.message || parsed.message || errMsg;
+        // Detect gRPC-only error — fall back to OpenAI-compatible endpoint
+        if (errMsg && (errMsg.toLowerCase().includes('grpc') || errMsg.toLowerCase().includes('openai'))) {
+          isGrpcError = true;
+        }
+      } catch (_) {
+        if (errBody.toLowerCase().includes('grpc') || errBody.toLowerCase().includes('openai')) {
+          isGrpcError = true;
+        }
+      }
+
+      if (isGrpcError) {
+        try {
+          const fallbackRes = await yandexOpenAIStream(
+            pCfg.apiKey, pCfg.folderId, modelUri, messages,
+            pCfg.temperature ?? 0.6, pCfg.maxTokens ?? 4000
+          );
+          if (fallbackRes.statusCode !== 200) {
+            let fb = '';
+            fallbackRes.on('data', (c) => { fb += c; });
+            fallbackRes.on('end', () => {
+              let msg = 'Ошибка Yandex OpenAI API';
+              try { msg = JSON.parse(fb).error?.message || msg; } catch (_) {}
+              res.write(`data: ${JSON.stringify({ error: msg })}\n\n`);
+              res.end();
+            });
+          } else {
+            pipeYandexOpenAIStream(fallbackRes, res);
+          }
+        } catch (fbErr) {
+          res.write(`data: ${JSON.stringify({ error: fbErr.message })}\n\n`);
+          res.end();
+        }
+        return;
+      }
+
       res.write(`data: ${JSON.stringify({ error: errMsg })}\n\n`);
       res.end();
     });
