@@ -1,0 +1,25 @@
+{
+  "activeProvider": "yandex",
+  "providers": {
+    "yandex": {
+      "apiKey": "",
+      "folderId": "b1g0i9ec4ojktqk4t58k",
+      "model": "deepseek-v32/latest",
+      "temperature": 0.6,
+      "maxTokens": 4000
+    },
+    "anthropic": {
+      "apiKey": "",
+      "model": "claude-sonnet-4-6",
+      "temperature": 0.7,
+      "maxTokens": 4000
+    },
+    "openai": {
+      "apiKey": "",
+      "model": "gpt-4o",
+      "temperature": 0.7,
+      "maxTokens": 4000,
+      "baseUrl": "https://api.openai.com/v1"
+    }
+  }
+}
