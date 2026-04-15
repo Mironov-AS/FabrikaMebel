@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, AlertTriangle, Printer, Plus, Package,
-  TruckIcon, ClipboardList, Calendar,
+  ClipboardList, Calendar,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { formatMoney } from '../../data/mockData';
@@ -11,12 +11,11 @@ import { WAREHOUSE_SERVICE_ID } from '../../constants/services';
 import StatusBadge from '../../components/ui/StatusBadge';
 import PriorityBadge, { PRIORITY_MAP } from '../../components/ui/PriorityBadge';
 import Tab from '../../components/ui/Tabs';
-import Modal from '../../components/ui/Modal';
 import Table from '../../components/ui/Table';
 
 // ─── Specification Tab ────────────────────────────────────────────────────────
 
-function SpecificationTab({ order, onCreateShipment, isWarehouse }) {
+function SpecificationTab({ order, isWarehouse }) {
   const spec = order.specification ?? [];
 
   const totalQty      = spec.reduce((s, i) => s + i.quantity, 0);
@@ -69,15 +68,6 @@ function SpecificationTab({ order, onCreateShipment, isWarehouse }) {
         <p className="text-sm text-gray-500">
           Позиций: <strong className="text-gray-800">{spec.length}</strong>
         </p>
-        {isWarehouse && (
-          <button
-            className="btn-primary flex items-center gap-1.5"
-            onClick={onCreateShipment}
-          >
-            <TruckIcon size={14} />
-            Создать отгрузку
-          </button>
-        )}
       </div>
 
       <Table columns={columns} data={spec} />
@@ -344,120 +334,6 @@ function ShipmentHistoryTab({ orderId, isWarehouse }) {
   );
 }
 
-// ─── Create Shipment Modal ────────────────────────────────────────────────────
-
-function CreateShipmentModal({ isOpen, onClose, order }) {
-  const addShipment = useAppStore(s => s.addShipment);
-  const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [shipDate, setShipDate] = useState(new Date().toISOString().slice(0, 10));
-  const [quantities, setQuantities] = useState({});
-
-  const spec = order?.specification ?? [];
-
-  const handleQtyChange = (id, val) => {
-    setQuantities(prev => ({ ...prev, [id]: val }));
-  };
-
-  const handleSave = () => {
-    if (!invoiceNumber.trim()) return;
-    const items = spec
-      .map(it => ({ ...it, qty: parseInt(quantities[it.id] ?? 0, 10) }))
-      .filter(it => it.qty > 0);
-    if (items.length === 0) return;
-    const amount = items.reduce((s, it) => s + it.qty * it.price, 0);
-    addShipment({
-      orderId: order.id,
-      orderNumber: order.number,
-      counterpartyId: order.counterpartyId,
-      date: shipDate,
-      invoiceNumber,
-      amount,
-      items: items.map(it => ({
-        specItemId: it.id,
-        name: it.name,
-        quantity: it.qty,
-        price: it.price,
-      })),
-      status: 'shipped',
-      paymentDueDate: null,
-      paidAmount: 0,
-      paidDate: null,
-    });
-    setInvoiceNumber('');
-    setQuantities({});
-    onClose();
-  };
-
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title="Создать отгрузку"
-      footer={
-        <>
-          <button className="btn-secondary" onClick={onClose}>Отмена</button>
-          <button
-            className="btn-primary"
-            onClick={handleSave}
-            disabled={!invoiceNumber.trim()}
-          >
-            Создать
-          </button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <div>
-          <label className="label">Номер накладной <span className="text-red-400">*</span></label>
-          <input
-            className="input"
-            placeholder="ТН-2026-XXXX"
-            value={invoiceNumber}
-            onChange={(e) => setInvoiceNumber(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="label">Дата отгрузки</label>
-          <input
-            className="input"
-            type="date"
-            value={shipDate}
-            onChange={(e) => setShipDate(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="label">Количество к отгрузке по позициям</label>
-          <div className="space-y-2 mt-1">
-            {spec.map(item => {
-              const max = item.quantity - (item.shipped ?? 0);
-              return (
-                <div key={item.id} className="flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-800 truncate">{item.name}</p>
-                    <p className="text-xs text-gray-400">
-                      Остаток: {max} шт. · {item.article}
-                    </p>
-                  </div>
-                  <input
-                    type="number"
-                    min="0"
-                    max={max}
-                    className="input w-20 text-center py-1.5 text-sm"
-                    placeholder="0"
-                    value={quantities[item.id] ?? ''}
-                    onChange={(e) => handleQtyChange(item.id, e.target.value)}
-                    disabled={max <= 0}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 // ─── Main Detail Page ─────────────────────────────────────────────────────────
 
 const TABS = [
@@ -477,7 +353,6 @@ export default function OrderDetail() {
   const isWarehouse = currentService === WAREHOUSE_SERVICE_ID;
 
   const [activeTab,       setActiveTab]       = useState('spec');
-  const [shipmentOpen,    setShipmentOpen]    = useState(false);
 
   const id    = parseInt(orderId, 10);
   const order = orders.find(o => o.id === id);
@@ -609,7 +484,6 @@ export default function OrderDetail() {
         {activeTab === 'spec' && (
           <SpecificationTab
             order={order}
-            onCreateShipment={() => setShipmentOpen(true)}
             isWarehouse={isWarehouse}
           />
         )}
@@ -626,12 +500,6 @@ export default function OrderDetail() {
         )}
       </div>
 
-      {/* Create Shipment Modal */}
-      <CreateShipmentModal
-        isOpen={shipmentOpen}
-        onClose={() => setShipmentOpen(false)}
-        order={order}
-      />
     </div>
   );
 }

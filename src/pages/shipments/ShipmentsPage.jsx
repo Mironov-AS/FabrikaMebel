@@ -1004,12 +1004,14 @@ export default function ShipmentsPage() {
             <span className="font-semibold text-orange-800">{readyOrders.length} заказ(а) готовы к отгрузке: </span>
             <span className="text-orange-700">{readyOrders.map(o => o.number).join(', ')}</span>
           </div>
-          <button
-            className="text-orange-700 hover:text-orange-900 text-xs font-medium underline flex-shrink-0"
-            onClick={() => setShowModal(true)}
-          >
-            Оформить отгрузку
-          </button>
+          {isWarehouse && (
+            <button
+              className="text-orange-700 hover:text-orange-900 text-xs font-medium underline flex-shrink-0"
+              onClick={() => setShowModal(true)}
+            >
+              Оформить отгрузку
+            </button>
+          )}
         </div>
       )}
 
