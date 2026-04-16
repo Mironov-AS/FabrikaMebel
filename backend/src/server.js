@@ -32,7 +32,7 @@ app.use(helmet({
 }));
 
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', /\.proxy\.daytona\.works$/, /\.preview\.promto\.ai$/],
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:5175', /\.proxy\.daytona\.works$/, /\.preview\.promto\.ai$/],
   credentials: true,         // required for cookies to be sent cross-origin
 }));
 
