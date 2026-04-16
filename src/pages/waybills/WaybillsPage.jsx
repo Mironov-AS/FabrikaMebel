@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   FileText, Plus, Pencil, Search,
-  MapPin, Phone, ChevronDown, X, Printer, Calendar, User,
+  MapPin, Phone, ChevronDown, X, Printer, Calendar, User, Map,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import Modal from '../../components/ui/Modal';
+import RouteMapModal from '../../components/waybills/RouteMapModal';
 
 // ─── Status badge ──────────────────────────────────────────────────────────
 const STATUS_MAP = {
@@ -29,13 +30,19 @@ function vehicleDisplay(driver) {
 }
 
 // ─── WaybillDetailModal ───────────────────────────────────────────────────
-function WaybillDetailModal({ route, onClose }) {
+function WaybillDetailModal({ route, onClose, onOpenMap }) {
   if (!route) return null;
   return (
     <Modal isOpen={!!route} onClose={onClose} title="Путевой лист" size="xl"
       footer={
         <>
           <button className="btn-secondary" onClick={onClose}>Закрыть</button>
+          <button
+            className="btn-secondary flex items-center gap-2"
+            onClick={() => onOpenMap(route)}
+          >
+            <Map size={14} /> Карта маршрута
+          </button>
           <button className="btn-primary flex items-center gap-2" onClick={() => window.print()}>
             <Printer size={14} /> Печать
           </button>
@@ -201,6 +208,7 @@ export default function WaybillsPage() {
 
   // Modals
   const [detailRoute, setDetailRoute] = useState(null);
+  const [mapRoute, setMapRoute] = useState(null);
   const [driverModal, setDriverModal] = useState(null); // null | 'new' | driver object
 
   useEffect(() => {
@@ -418,12 +426,21 @@ export default function WaybillsPage() {
                           <RouteStatusBadge status={r.status} />
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <button
-                            className="inline-flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium transition-colors"
-                            onClick={() => setDetailRoute(r)}
-                          >
-                            <FileText size={12} /> Открыть
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="inline-flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium transition-colors"
+                              onClick={() => setDetailRoute(r)}
+                            >
+                              <FileText size={12} /> Открыть
+                            </button>
+                            <button
+                              className="inline-flex items-center gap-1.5 text-xs border border-gray-300 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+                              onClick={() => setMapRoute(r)}
+                              title="Карта маршрута"
+                            >
+                              <Map size={12} /> Карта
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -492,7 +509,12 @@ export default function WaybillsPage() {
       )}
 
       {/* Modals */}
-      <WaybillDetailModal route={detailRoute} onClose={() => setDetailRoute(null)} />
+      <WaybillDetailModal
+        route={detailRoute}
+        onClose={() => setDetailRoute(null)}
+        onOpenMap={(r) => { setDetailRoute(null); setMapRoute(r); }}
+      />
+      <RouteMapModal route={mapRoute} onClose={() => setMapRoute(null)} />
 
       {driverModal && (
         <DriverModal

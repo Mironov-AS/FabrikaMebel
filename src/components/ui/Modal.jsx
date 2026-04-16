@@ -1,7 +1,15 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
 
-export default function Modal({ isOpen, onClose, title, children, footer }) {
+const SIZE_CLS = {
+  sm: 'max-w-sm',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+  xl: 'max-w-3xl',
+  '2xl': 'max-w-5xl',
+};
+
+export default function Modal({ isOpen, onClose, title, children, footer, size = 'md' }) {
   // Close on Escape key
   useEffect(() => {
     if (!isOpen) return;
@@ -35,7 +43,7 @@ export default function Modal({ isOpen, onClose, title, children, footer }) {
 
       {/* Panel */}
       <div
-        className="relative z-10 bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]"
+        className={`relative z-10 bg-white rounded-2xl shadow-xl w-full ${SIZE_CLS[size] || SIZE_CLS.md} mx-4 flex flex-col max-h-[90vh]`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
