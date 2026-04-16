@@ -388,6 +388,19 @@ db.exec(`
   );
 `);
 
+// App settings table (key-value store)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
+`);
+// Default company name if not set
+const existingCompanyName = db.prepare("SELECT value FROM app_settings WHERE key = 'company_name'").get();
+if (!existingCompanyName) {
+  db.prepare("INSERT INTO app_settings (key, value) VALUES ('company_name', '')").run();
+}
+
 // Fix orders stuck in ready_for_shipment/scheduled_for_shipment when all items are already shipped
 {
   const stuckOrders = db.prepare(

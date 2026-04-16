@@ -39,31 +39,42 @@ const UPLOADS_DIR = path.resolve(__dirname, '../../uploads/contracts');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // ─── AI contract analysis ──────────────────────────────────────────────────────
-async function analyzeContractWithAI(text) {
+async function analyzeContractWithAI(text, myCompanyName) {
   const cfg = readConfig();
   const active = cfg.activeProvider || 'anthropic';
   const pCfg = cfg.providers?.[active] || {};
+
+  const companyHint = myCompanyName
+    ? `ВАЖНО: Наша компания называется "${myCompanyName}". Контрагентом является ДРУГАЯ сторона договора — не наша компания.\n`
+    : 'Контрагентом является та сторона договора, которая не является поставщиком/производителем (т.е. покупатель, заказчик или клиент).\n';
 
   const prompt = `Ты — специалист по анализу договоров. Проанализируй текст договора и верни JSON строго следующей структуры (без пояснений, только JSON):
 {
   "number": "номер договора или null",
   "date": "дата в формате YYYY-MM-DD или null",
-  "validUntil": "дата окончания действия в формате YYYY-MM-DD или null",
+  "validUntil": "дата окончания действия в формате YYYY-MM-DD или null. Если договор заключён на 1 год от даты подписания — вычисли дату окончания как дата+1год",
   "amount": число или null,
-  "subject": "предмет договора (краткое описание) или null",
-  "paymentDelay": число (дней отсрочки) или null,
-  "penaltyRate": число (процент штрафа за день) или null,
+  "subject": "предмет договора (краткое описание, 5-10 слов) или null",
+  "paymentDelay": число (календарных дней отсрочки платежа) или null,
+  "penaltyRate": число (процент штрафа за день просрочки оплаты, например 0.01) или null,
   "counterparty": {
-    "name": "полное название контрагента (не нашей компании) или null",
+    "name": "полное официальное название контрагента (не нашей компании) или null",
     "inn": "ИНН контрагента или null",
     "kpp": "КПП контрагента или null",
     "address": "юридический адрес контрагента или null",
     "delivery_address": null,
-    "contact": "контактное лицо или null",
-    "phone": "телефон или null",
-    "email": "email или null"
+    "contact": "контактное лицо контрагента или null",
+    "phone": "телефон контрагента или null",
+    "email": "email контрагента или null"
   }
 }
+
+${companyHint}
+Дополнительные правила:
+- paymentDelay: если указаны рабочие дни (например "14 рабочих дней"), умножь на 1.4 и округли до целого (14 рабочих дней ≈ 20 календарных дней)
+- penaltyRate: используй ставку штрафа за просрочку ОПЛАТЫ (со стороны покупателя/контрагента), не штраф за просрочку поставки
+- validUntil: если договор "действует в течение 1 года" от даты подписания — прибавь 1 год к дате договора
+- counterparty.name: если наша компания является Поставщиком, то контрагент — это Покупатель. Если наша компания является Покупателем, то контрагент — Поставщик.
 
 Текст договора:
 ${text}`;
@@ -241,7 +252,9 @@ router.post('/analyze-file', requireRole('admin', 'sales_manager', 'director'), 
     // AI analysis
     let extracted = null;
     if (contentText && contentText.trim().length >= 30) {
-      extracted = await analyzeContractWithAI(contentText.slice(0, 15000));
+      const companySetting = db.prepare("SELECT value FROM app_settings WHERE key = 'company_name'").get();
+      const myCompanyName = companySetting?.value?.trim() || '';
+      extracted = await analyzeContractWithAI(contentText.slice(0, 15000), myCompanyName);
     }
 
     // Find matching counterparty

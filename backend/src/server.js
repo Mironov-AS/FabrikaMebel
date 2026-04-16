@@ -64,6 +64,7 @@ app.use('/api/counterparties', require('./routes/counterparties'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/ai-chat', require('./routes/aiChat'));
 app.use('/api/llm-config', require('./routes/llmConfig'));
+app.use('/api/settings', require('./routes/settings'));
 app.use('/api/drivers', require('./routes/drivers'));
 app.use('/api/delivery-routes', require('./routes/deliveryRoutes'));
 

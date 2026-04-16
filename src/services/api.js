@@ -168,6 +168,12 @@ export const nomenclatureApi = {
   delete: (id) => api.delete(`/nomenclature/${id}`),
 };
 
+// Settings API
+export const settingsApi = {
+  get: () => api.get('/settings'),
+  update: (data) => api.put('/settings', data),
+};
+
 // Auth API
 export const authApi = {
   login: (email, password) => api.post('/auth/login', { email, password }),
