@@ -49,6 +49,11 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
   const safeOrderNumber = orderNumber ? sanitizeStr(orderNumber) : null;
   const safeDeliveryAddress = deliveryAddress ? sanitizeStr(deliveryAddress) : null;
 
+  // invoiceNumber is required
+  if (!safeInvoiceNumber) {
+    return res.status(400).json({ error: 'Поле invoiceNumber обязательно' });
+  }
+
   // Validate orderId exists if provided
   let order = null;
   if (orderId) {
@@ -67,17 +72,34 @@ router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_h
 
   const effectiveDate = scheduledDate || date;
 
+  // Auto-calculate paymentDueDate from contract.payment_delay if not provided
+  let effectivePaymentDueDate = paymentDueDate ? sanitizeStr(paymentDueDate) : null;
+  if (!effectivePaymentDueDate && order && order.contract_id) {
+    const contract = db.prepare('SELECT payment_delay FROM contracts WHERE id = ?').get(order.contract_id);
+    if (contract && contract.payment_delay && effectiveDate) {
+      const d = new Date(effectiveDate);
+      d.setDate(d.getDate() + contract.payment_delay);
+      effectivePaymentDueDate = d.toISOString().split('T')[0];
+    }
+  }
+
   const result = db.prepare(`
-    INSERT INTO shipments (order_id, order_number, counterparty_id, date, scheduled_date, invoice_number, amount, status, paid_amount, delivery_type, delivery_address)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled', 0, ?, ?)
+    INSERT INTO shipments (order_id, order_number, counterparty_id, date, scheduled_date, invoice_number, amount, status, paid_amount, delivery_type, delivery_address, payment_due_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled', 0, ?, ?, ?)
   `).run(
     orderId || null, safeOrderNumber, counterpartyId || null,
     effectiveDate, scheduledDate || null,
     safeInvoiceNumber, amount || 0,
-    deliveryType || 'pickup', safeDeliveryAddress
+    deliveryType || 'pickup', safeDeliveryAddress, effectivePaymentDueDate
   );
 
   const shipmentId = result.lastInsertRowid;
+
+  // Auto-create a pending payment record for this shipment
+  db.prepare(`
+    INSERT INTO payments (shipment_id, counterparty_id, amount, due_date, status, invoice_number)
+    VALUES (?, ?, ?, ?, 'pending', ?)
+  `).run(shipmentId, counterpartyId || null, amount || 0, effectivePaymentDueDate, safeInvoiceNumber);
 
   for (const item of items) {
     db.prepare('INSERT INTO shipment_items (shipment_id, order_item_id, name, quantity, price) VALUES (?, ?, ?, ?, ?)').run(

@@ -181,6 +181,61 @@ describe('PUT /api/orders/:id', () => {
   });
 });
 
+describe('PUT /api/orders/:id/items/:itemId', () => {
+  let orderId, itemId;
+
+  beforeEach(() => {
+    const { lastInsertRowid: oid } = db.prepare(
+      "INSERT INTO orders (number, status, priority, created_by) VALUES ('ORD-ITEMS', 'in_production', 'medium', 1)"
+    ).run();
+    orderId = oid;
+    const { lastInsertRowid: iid } = db.prepare(
+      "INSERT INTO order_items (order_id, name, quantity, price, status, shipped) VALUES (?, 'Диван', 1, 2000, 'planned', 0)"
+    ).run(orderId);
+    itemId = iid;
+  });
+
+  it('updates order item status', async () => {
+    const res = await request(app)
+      .put(`/api/orders/${orderId}/items/${itemId}`)
+      .send({ status: 'done' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.specification.some(i => i.status === 'done')).toBe(true);
+  });
+
+  it('returns 404 when order does not exist', async () => {
+    const res = await request(app)
+      .put(`/api/orders/9999/items/${itemId}`)
+      .send({ status: 'done' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 when item does not belong to the order', async () => {
+    const { lastInsertRowid: otherId } = db.prepare(
+      "INSERT INTO orders (number, status, priority, created_by) VALUES ('ORD-OTHER', 'planned', 'medium', 1)"
+    ).run();
+
+    const res = await request(app)
+      .put(`/api/orders/${otherId}/items/${itemId}`)
+      .send({ status: 'done' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('updates item name and price', async () => {
+    const res = await request(app)
+      .put(`/api/orders/${orderId}/items/${itemId}`)
+      .send({ name: 'Кресло', price: 3500 });
+
+    expect(res.status).toBe(200);
+    const item = res.body.specification.find(i => i.id === itemId);
+    expect(item.name).toBe('Кресло');
+    expect(item.price).toBe(3500);
+  });
+});
+
 describe('DELETE /api/orders/:id', () => {
   it('deletes an existing order', async () => {
     const { lastInsertRowid } = db.prepare(
