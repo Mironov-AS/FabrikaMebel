@@ -129,16 +129,37 @@ router.post('/test/:provider', async (req, res) => {
         completionOptions: { stream: false, temperature: 0.1, maxTokens: 5 },
         messages: [{ role: 'user', text: 'тест' }],
       });
-      await httpPost({
-        hostname: 'llm.api.cloud.yandex.net',
-        path: '/foundationModels/v1/completion',
-        headers: {
-          'Authorization': `Api-Key ${pCfg.apiKey}`,
-          'x-folder-id': folderId,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(body),
-        },
-      }, body);
+      try {
+        await httpPost({
+          hostname: 'llm.api.cloud.yandex.net',
+          path: '/foundationModels/v1/completion',
+          headers: {
+            'Authorization': `Api-Key ${pCfg.apiKey}`,
+            'x-folder-id': folderId,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body),
+          },
+        }, body);
+      } catch (primaryErr) {
+        // Fallback to OpenAI-compatible endpoint (used by some models like deepseek)
+        const openAIBody = JSON.stringify({
+          model: testModelUri,
+          messages: [{ role: 'user', content: 'тест' }],
+          temperature: 0.1,
+          max_tokens: 5,
+          stream: false,
+        });
+        await httpPost({
+          hostname: 'llm.api.cloud.yandex.net',
+          path: '/v1/chat/completions',
+          headers: {
+            'Authorization': `Api-Key ${pCfg.apiKey}`,
+            'x-folder-id': folderId,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(openAIBody),
+          },
+        }, openAIBody);
+      }
 
     } else if (provider === 'anthropic') {
       if (!pCfg.apiKey) return res.json({ ok: false, error: 'Требуется API Key' });
