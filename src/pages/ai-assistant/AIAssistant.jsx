@@ -55,6 +55,9 @@ function parseBlocks(text) {
     if (h2) { blocks.push({ type: 'h2', content: h2[1] }); i++; continue; }
     if (h1) { blocks.push({ type: 'h1', content: h1[1] }); i++; continue; }
 
+    // Horizontal rule (--- / *** / ___) — skip
+    if (line.match(/^[-*_]{3,}\s*$/)) { i++; continue; }
+
     // Unordered list
     if (line.match(/^[-*•] /)) {
       const items = [];
@@ -93,6 +96,8 @@ function parseBlocks(text) {
       i++;
     }
     if (textLines.length) blocks.push({ type: 'p', content: textLines.join('\n') });
+    // Safety: if nothing was consumed (unrecognised line), always advance to prevent infinite loop
+    else i++;
   }
 
   return blocks;
