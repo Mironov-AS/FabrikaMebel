@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MapPin, Clock, Navigation, AlertCircle, Loader2, RefreshCw, Warehouse } from 'lucide-react';
+import { MapPin, Clock, Navigation, AlertCircle, Loader2, RefreshCw, Warehouse, Sparkles, Info } from 'lucide-react';
 import Modal from '../ui/Modal';
+import api from '../../services/api';
 
 // Fix Leaflet default marker icons with Vite
 import L from 'leaflet';
@@ -47,26 +48,26 @@ function addSeconds(timeStr, seconds) {
 function normalizeAddress(address) {
   if (!address) return address;
   return address
-    .replace(/\bг\.\s*/gi, '')                  // "г. Москва" → "Москва"
-    .replace(/\bгород\s+/gi, '')                // "город Москва" → "Москва"
-    .replace(/\bул\.\s*/gi, 'улица ')           // "ул. Тверская" → "улица Тверская"
-    .replace(/\bпр-кт\.?\s*/gi, 'проспект ')   // "пр-кт Ленина" → "проспект Ленина"
-    .replace(/\bпр-т\.?\s*/gi, 'проспект ')    // "пр-т Мира" → "проспект Мира"
+    .replace(/\bг\.\s*/gi, '')
+    .replace(/\bгород\s+/gi, '')
+    .replace(/\bул\.\s*/gi, 'улица ')
+    .replace(/\bпр-кт\.?\s*/gi, 'проспект ')
+    .replace(/\bпр-т\.?\s*/gi, 'проспект ')
     .replace(/\bпроезд\s+/gi, 'проезд ')
-    .replace(/\bпер\.\s*/gi, 'переулок ')      // "пер. Сивцев" → "переулок Сивцев"
-    .replace(/\bнаб\.\s*/gi, 'набережная ')    // "наб. Кутузова" → "набережная Кутузова"
-    .replace(/\bш\.\s*/gi, 'шоссе ')           // "ш. Рязанское" → "шоссе Рязанское"
-    .replace(/\bб-р\.?\s*/gi, 'бульвар ')      // "б-р Тверской" → "бульвар Тверской"
-    .replace(/\bпл\.\s*/gi, 'площадь ')        // "пл. Красная" → "площадь Красная"
-    .replace(/\bд\.\s*(?=\d)/gi, '')           // "д. 15" → "15"
-    .replace(/\bкорп?\.\s*(?=\d)/gi, 'корпус ') // "к. 2" → "корпус 2"
-    .replace(/\bстр\.\s*(?=\d)/gi, 'строение ') // "стр. 1" → "строение 1"
+    .replace(/\bпер\.\s*/gi, 'переулок ')
+    .replace(/\bнаб\.\s*/gi, 'набережная ')
+    .replace(/\bш\.\s*/gi, 'шоссе ')
+    .replace(/\bб-р\.?\s*/gi, 'бульвар ')
+    .replace(/\bпл\.\s*/gi, 'площадь ')
+    .replace(/\bд\.\s*(?=\d)/gi, '')
+    .replace(/\bкорп?\.\s*(?=\d)/gi, 'корпус ')
+    .replace(/\bстр\.\s*(?=\d)/gi, 'строение ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 // ─── Geocode single address via Nominatim ──────────────────────────────────
-async function geocodeAddress(address) {
+async function geocodeWithNominatim(address) {
   if (!address?.trim()) return null;
   const normalized = normalizeAddress(address);
   try {
@@ -82,9 +83,104 @@ async function geocodeAddress(address) {
   }
 }
 
+// ─── LLM address normalization via /api/ai-chat (SSE) ────────────────────────
+// Sends a geocoding-specific prompt and collects the full streamed response.
+async function normalizeBatchWithLLM(addresses) {
+  const authHeader = api.defaults.headers.common['Authorization'] || '';
+
+  const message = `ЗАДАЧА: Нормализуй адреса для геокодирования через OpenStreetMap Nominatim. Ответь ТОЛЬКО JSON-объектом без пояснений и без markdown-блоков.
+
+ПРАВИЛА:
+- Раскрывай сокращения: "ул." → "улица", "пр-кт"/"пр-т" → "проспект", "пер." → "переулок", "наб." → "набережная", "ш." → "шоссе", "б-р" → "бульвар", "пл." → "площадь"
+- Убирай "г." / "город" перед городом; убирай "д." перед номером дома
+- "корп."/"к." → "корпус", "стр." → "строение"
+- Не придумывай детали которых нет
+- Если строка — название компании, оставь как есть
+
+ФОРМАТ ОТВЕТА (строго JSON):
+{"results":[{"original":"...","normalized":"..."}]}
+
+АДРЕСА:
+${JSON.stringify(addresses)}`;
+
+  const response = await fetch('/api/ai-chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(authHeader ? { Authorization: authHeader } : {}),
+    },
+    body: JSON.stringify({ message, history: [] }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`LLM HTTP ${response.status}`);
+  }
+
+  // Consume SSE stream and collect full text
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
+  let done = false;
+
+  while (!done) {
+    const result = await reader.read();
+    done = result.done;
+    if (result.value) {
+      buffer += decoder.decode(result.value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        const dataPart = trimmed.startsWith('data: ') ? trimmed.slice(6) : trimmed;
+        try {
+          const json = JSON.parse(dataPart);
+          if (json.text) fullText += json.text;
+          if (json.error) throw new Error(json.error);
+        } catch (parseErr) {
+          if (parseErr.message && !parseErr.message.startsWith('JSON')) throw parseErr;
+        }
+      }
+    }
+  }
+
+  // Parse JSON from collected text (strip markdown fences if present)
+  const cleaned = fullText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+  // Extract JSON object from text (LLM may add extra explanation around it)
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('LLM вернула неверный формат');
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  if (!Array.isArray(parsed?.results)) throw new Error('LLM вернула неверную структуру');
+
+  const map = new Map(parsed.results.map(r => [r.original, r.normalized]));
+  return { map };
+}
+
+// ─── Geocode address with optional LLM fallback ───────────────────────────
+async function geocodeAddress(address, llmNormalizedMap) {
+  if (!address?.trim()) return { coords: null, llmUsed: false };
+
+  // 1. Try direct Nominatim
+  const direct = await geocodeWithNominatim(address);
+  if (direct) return { coords: direct, llmUsed: false, normalizedAddress: null };
+
+  // 2. If LLM map provided, try LLM-normalized version
+  if (llmNormalizedMap) {
+    const normalized = llmNormalizedMap.get(address);
+    if (normalized && normalized !== address) {
+      const llmResult = await geocodeWithNominatim(normalized);
+      if (llmResult) return { coords: llmResult, llmUsed: true, normalizedAddress: normalized };
+    }
+  }
+
+  return { coords: null, llmUsed: false, normalizedAddress: null };
+}
+
 // ─── OSRM Trip (optimise + route) ─────────────────────────────────────────
 async function buildOsrmTrip(coords) {
-  // coords: [{lat, lng}, ...] — first is warehouse (source=first, destination=last)
   const coordStr = coords.map(c => `${c.lng},${c.lat}`).join(';');
   const url = `${OSRM_BASE}/trip/v1/driving/${coordStr}?source=first&destination=last&roundtrip=false&geometries=geojson&overview=full&annotations=false`;
   const res = await fetch(url);
@@ -93,7 +189,7 @@ async function buildOsrmTrip(coords) {
   return data;
 }
 
-// ─── Map renderer (pure Leaflet, no react-leaflet to avoid SSR issues) ─────
+// ─── Map renderer ──────────────────────────────────────────────────────────
 function LeafletMap({ waypoints, routeGeometry, optimizedOrder }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -113,21 +209,18 @@ function LeafletMap({ waypoints, routeGeometry, optimizedOrder }) {
     const map = mapRef.current;
     if (!map) return;
 
-    // Clear previous layers (except tile layer)
     map.eachLayer(layer => { if (layer instanceof L.Marker || layer instanceof L.Polyline) map.removeLayer(layer); });
 
     if (!waypoints?.length) return;
 
     const bounds = [];
 
-    // Route polyline
     if (routeGeometry) {
       const latlngs = routeGeometry.coordinates.map(([lng, lat]) => [lat, lng]);
       L.polyline(latlngs, { color: '#2563eb', weight: 4, opacity: 0.8 }).addTo(map);
       bounds.push(...latlngs);
     }
 
-    // Markers
     waypoints.forEach((wp, idx) => {
       if (!wp.coords) return;
       const isWarehouse = idx === 0;
@@ -150,7 +243,7 @@ function LeafletMap({ waypoints, routeGeometry, optimizedOrder }) {
 
       const marker = L.marker([wp.coords.lat, wp.coords.lng], { icon });
       marker.bindTooltip(
-        `<b>${isWarehouse ? 'Склад (отправление)' : `Точка ${label}: ${wp.name}`}</b>${wp.eta ? `<br>Прибытие: ${wp.eta}` : ''}`,
+        `<b>${isWarehouse ? 'Склад (отправление)' : `Точка ${label}: ${wp.name}`}</b>${wp.eta ? `<br>Прибытие: ${wp.eta}` : ''}${wp.llmUsed ? '<br><i>✨ адрес уточнён через ИИ</i>' : ''}`,
         { permanent: false, direction: 'top' }
       );
       marker.addTo(map);
@@ -165,82 +258,135 @@ function LeafletMap({ waypoints, routeGeometry, optimizedOrder }) {
   return <div ref={containerRef} style={{ width: '100%', height: '420px', borderRadius: '8px', overflow: 'hidden' }} />;
 }
 
+// ─── LLM status badge ──────────────────────────────────────────────────────
+function LlmBadge({ provider }) {
+  const labels = { anthropic: 'Claude', openai: 'OpenAI', yandex: 'YandexGPT' };
+  return (
+    <span className="inline-flex items-center gap-1 text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">
+      <Sparkles size={10} />
+      {labels[provider] || provider || 'ИИ'}
+    </span>
+  );
+}
+
 // ─── Main Modal ────────────────────────────────────────────────────────────
 export default function RouteMapModal({ route, onClose }) {
   const [warehouseAddress, setWarehouseAddress] = useState('');
   const [departureTime, setDepartureTime] = useState('09:00');
+  const [useLlm, setUseLlm] = useState(false);
+  const [llmStatus, setLlmStatus] = useState(null); // { configured, provider, model }
   const [loading, setLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState('');
   const [error, setError] = useState('');
-  const [result, setResult] = useState(null); // { waypoints, routeGeometry, legs, optimizedOrder, totalDist, totalDur }
+  const [result, setResult] = useState(null);
 
   const shipments = route?.shipments || [];
+
+  // Check LLM config on mount
+  useEffect(() => {
+    api.get('/ai-chat/status')
+      .then(({ data }) => {
+        setLlmStatus(data);
+        if (data.configured) setUseLlm(true);
+      })
+      .catch(() => setLlmStatus({ configured: false }));
+  }, []);
 
   const buildRoute = useCallback(async () => {
     setError('');
     setResult(null);
     setLoading(true);
+    setLoadingStep('Подготовка адресов...');
 
     try {
-      // 1. Geocode warehouse
-      const warehouseCoords = await geocodeAddress(warehouseAddress || 'Москва, склад');
-      if (!warehouseCoords) throw new Error('Не удалось определить координаты склада. Уточните адрес.');
+      const allAddresses = [
+        warehouseAddress || 'Москва',
+        ...shipments.map(s => s.deliveryAddress || s.counterpartyName),
+      ];
 
-      // 2. Geocode all delivery addresses
-      const geocoded = await Promise.all(
-        shipments.map(s => geocodeAddress(s.deliveryAddress || s.counterpartyName))
-      );
+      // ── Step 1: LLM normalization (if enabled and configured) ────────────
+      let llmMap = null;
 
-      const failedIdx = geocoded.findIndex(g => !g);
-      if (failedIdx !== -1) {
-        throw new Error(`Не удалось геокодировать адрес: "${shipments[failedIdx].deliveryAddress || shipments[failedIdx].counterpartyName}". Проверьте адрес доставки.`);
+      if (useLlm && llmStatus?.configured) {
+        setLoadingStep('ИИ нормализует адреса...');
+        try {
+          const { map } = await normalizeBatchWithLLM(allAddresses);
+          llmMap = map;
+        } catch (llmErr) {
+          console.warn('LLM normalization skipped:', llmErr.message);
+          // Non-fatal: continue with standard geocoding
+        }
       }
 
-      // 3. Build OSRM trip [warehouse, ...stops]
-      const allCoords = [warehouseCoords, ...geocoded];
+      // ── Step 2: Geocode warehouse ────────────────────────────────────────
+      setLoadingStep('Геокодирование склада...');
+      const warehouseInput = warehouseAddress || 'Москва';
+      const warehouseResult = await geocodeAddress(warehouseInput, llmMap);
+      if (!warehouseResult.coords) {
+        throw new Error(
+          warehouseResult.normalizedAddress
+            ? `Не удалось определить координаты склада.\nИсходный: "${warehouseInput}"\nНормализован ИИ: "${warehouseResult.normalizedAddress}"`
+            : `Не удалось определить координаты склада: "${warehouseInput}". Уточните адрес.`
+        );
+      }
+
+      // ── Step 3: Geocode delivery addresses ───────────────────────────────
+      setLoadingStep(`Геокодирование ${shipments.length} адресов доставки...`);
+      const geocodedResults = await Promise.all(
+        shipments.map(s => geocodeAddress(s.deliveryAddress || s.counterpartyName, llmMap))
+      );
+
+      const failedIdx = geocodedResults.findIndex(g => !g.coords);
+      if (failedIdx !== -1) {
+        const failedAddr = shipments[failedIdx].deliveryAddress || shipments[failedIdx].counterpartyName;
+        const norm = geocodedResults[failedIdx].normalizedAddress;
+        throw new Error(
+          norm
+            ? `Не удалось геокодировать адрес:\nИсходный: "${failedAddr}"\nНормализован ИИ: "${norm}"`
+            : `Не удалось геокодировать адрес: "${failedAddr}". Проверьте адрес доставки.`
+        );
+      }
+
+      const geocoded = geocodedResults.map(r => r.coords);
+      const llmUsedFlags = geocodedResults.map(r => r.llmUsed);
+
+      // ── Step 4: Build OSRM route ─────────────────────────────────────────
+      setLoadingStep('Строим оптимальный маршрут...');
+      const allCoords = [warehouseResult.coords, ...geocoded];
       const tripData = await buildOsrmTrip(allCoords);
 
-      // OSRM returns waypoints in original order but with waypoint_index showing optimised order
-      const osrmWaypoints = tripData.waypoints; // [{waypoint_index, trips_index, ...}]
+      const osrmWaypoints = tripData.waypoints;
       const trip = tripData.trips[0];
-      const legs = trip.legs; // legs[i] = travel from optimised stop i to i+1
+      const legs = trip.legs;
 
-      // Build optimised order of client stops (excluding warehouse at position 0)
-      // waypoints[0] = warehouse (source=first, so it stays at index 0 in osrm output)
-      // remaining waypoints sorted by waypoint_index give the optimised client order
-      const clientWaypoints = osrmWaypoints.slice(1); // skip warehouse
+      const clientWaypoints = osrmWaypoints.slice(1);
       const sorted = [...clientWaypoints].sort((a, b) => a.waypoint_index - b.waypoint_index);
-      // sorted[i].location gives original shipment index (1-based in allCoords → 0-based in shipments)
-      // We map original index (index in osrmWaypoints array, 1-based) to position in trip
-      const optimisedClientOrder = sorted.map(wp => {
-        // Find original index in osrmWaypoints
-        return osrmWaypoints.indexOf(wp) - 1; // 0-based shipment index
-      });
+      const optimisedClientOrder = sorted.map(wp => osrmWaypoints.indexOf(wp) - 1);
 
-      // 4. Build cumulative ETAs
-      // legs[0] = warehouse → first client, legs[1] = first → second, etc.
+      // ── Step 5: ETAs ─────────────────────────────────────────────────────
       let cumulativeSeconds = 0;
       const stopsWithEta = optimisedClientOrder.map((shipIdx, i) => {
         cumulativeSeconds += legs[i]?.duration || 0;
-        const eta = addSeconds(departureTime, cumulativeSeconds);
-        const legDist = legs[i]?.distance || 0;
-        const legDur = legs[i]?.duration || 0;
         return {
           shipIdx,
           name: shipments[shipIdx]?.counterpartyName || `Клиент ${shipIdx + 1}`,
           address: shipments[shipIdx]?.deliveryAddress || '—',
           coords: geocoded[shipIdx],
-          eta,
-          legDist,
-          legDur,
+          eta: addSeconds(departureTime, cumulativeSeconds),
+          legDist: legs[i]?.distance || 0,
+          legDur: legs[i]?.duration || 0,
           cumulativeSeconds,
+          llmUsed: llmUsedFlags[shipIdx] || false,
+          normalizedAddress: geocodedResults[shipIdx]?.normalizedAddress || null,
         };
       });
 
-      // 5. Build waypoints for map (warehouse first, then optimised stops)
       const mapWaypoints = [
-        { name: 'Склад', coords: warehouseCoords, eta: departureTime, isWarehouse: true },
-        ...stopsWithEta.map(s => ({ name: s.name, coords: s.coords, eta: s.eta })),
+        { name: 'Склад', coords: warehouseResult.coords, eta: departureTime, isWarehouse: true, llmUsed: warehouseResult.llmUsed },
+        ...stopsWithEta.map(s => ({ name: s.name, coords: s.coords, eta: s.eta, llmUsed: s.llmUsed })),
       ];
+
+      const llmCount = (warehouseResult.llmUsed ? 1 : 0) + llmUsedFlags.filter(Boolean).length;
 
       setResult({
         waypoints: mapWaypoints,
@@ -250,13 +396,16 @@ export default function RouteMapModal({ route, onClose }) {
         optimizedOrder: optimisedClientOrder,
         totalDist: trip.distance,
         totalDur: trip.duration,
+        llmCount,
+        llmProvider: llmStatus?.provider,
       });
     } catch (err) {
       setError(err.message || 'Ошибка при построении маршрута');
     } finally {
       setLoading(false);
+      setLoadingStep('');
     }
-  }, [warehouseAddress, departureTime, shipments]);
+  }, [warehouseAddress, departureTime, shipments, useLlm, llmStatus]);
 
   return (
     <Modal
@@ -298,13 +447,51 @@ export default function RouteMapModal({ route, onClose }) {
               />
             </div>
           </div>
+
+          {/* LLM geocoding toggle */}
+          <div className="flex items-start gap-3 bg-white border border-violet-100 rounded-lg px-3 py-2.5">
+            <div className="flex items-center pt-0.5">
+              <input
+                id="llm-toggle"
+                type="checkbox"
+                checked={useLlm}
+                onChange={e => setUseLlm(e.target.checked)}
+                disabled={!llmStatus?.configured}
+                className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer disabled:opacity-50"
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <label
+                htmlFor="llm-toggle"
+                className="flex items-center gap-2 text-sm font-medium text-gray-700 select-none"
+                style={{ cursor: llmStatus?.configured ? 'pointer' : 'default' }}
+              >
+                <Sparkles size={14} className="text-violet-500 shrink-0" />
+                Геокодирование через ИИ
+                {llmStatus?.configured && llmStatus.provider && <LlmBadge provider={llmStatus.provider} />}
+                {llmStatus?.configured === false && (
+                  <span className="text-xs text-amber-600 font-normal">(ИИ не настроен)</span>
+                )}
+              </label>
+              <p className="text-xs text-gray-400 mt-0.5">
+                ИИ нормализует адреса перед геокодированием — улучшает распознавание сокращений и нестандартных форматов
+              </p>
+              {llmStatus?.configured === false && (
+                <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">
+                  <Info size={11} className="shrink-0" />
+                  Настройте модель в разделе «Администрирование → Языковые модели»
+                </p>
+              )}
+            </div>
+          </div>
+
           <button
             className="btn-primary flex items-center gap-2 text-sm"
             onClick={buildRoute}
             disabled={loading || shipments.length === 0}
           >
             {loading
-              ? <><Loader2 size={14} className="animate-spin" /> Строим маршрут...</>
+              ? <><Loader2 size={14} className="animate-spin" /> {loadingStep || 'Строим маршрут...'}</>
               : result
                 ? <><RefreshCw size={14} /> Перестроить</>
                 : <><MapPin size={14} /> Построить маршрут</>
@@ -319,7 +506,7 @@ export default function RouteMapModal({ route, onClose }) {
         {error && (
           <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
             <AlertCircle size={15} className="shrink-0 mt-0.5" />
-            <span>{error}</span>
+            <span className="whitespace-pre-wrap">{error}</span>
           </div>
         )}
 
@@ -333,7 +520,7 @@ export default function RouteMapModal({ route, onClose }) {
             />
 
             {/* Summary */}
-            <div className="flex items-center gap-6 text-sm text-gray-600 bg-blue-50 border border-blue-100 rounded-lg px-4 py-2">
+            <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 bg-blue-50 border border-blue-100 rounded-lg px-4 py-2">
               <span className="flex items-center gap-1.5">
                 <Navigation size={13} className="text-blue-500" />
                 Расстояние: <strong>{formatDistance(result.totalDist)}</strong>
@@ -345,6 +532,13 @@ export default function RouteMapModal({ route, onClose }) {
               <span className="text-gray-500">
                 Выезд: <strong>{departureTime}</strong>
               </span>
+              {result.llmCount > 0 && (
+                <span className="flex items-center gap-1.5 text-violet-600">
+                  <Sparkles size={12} />
+                  ИИ уточнил {result.llmCount} {result.llmCount === 1 ? 'адрес' : result.llmCount < 5 ? 'адреса' : 'адресов'}
+                  {result.llmProvider && <LlmBadge provider={result.llmProvider} />}
+                </span>
+              )}
             </div>
 
             {/* Stops ETA table */}
@@ -357,7 +551,14 @@ export default function RouteMapModal({ route, onClose }) {
                 <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                   <div className="w-7 h-7 rounded-full bg-gray-700 text-white flex items-center justify-center text-xs font-bold shrink-0">С</div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900">Склад (отправление)</p>
+                    <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                      Склад (отправление)
+                      {result.waypoints[0]?.llmUsed && (
+                        <span title="Адрес уточнён через ИИ">
+                          <Sparkles size={11} className="text-violet-500" />
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-gray-500 truncate">{warehouseAddress || 'Адрес склада'}</p>
                   </div>
                   <div className="text-right shrink-0">
@@ -375,8 +576,20 @@ export default function RouteMapModal({ route, onClose }) {
                       {i + 1}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900">{stop.name}</p>
+                      <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                        {stop.name}
+                        {stop.llmUsed && (
+                          <span title={`Адрес нормализован через ИИ: ${stop.normalizedAddress}`}>
+                            <Sparkles size={11} className="text-violet-500 cursor-help" />
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xs text-gray-500 truncate">{stop.address}</p>
+                      {stop.llmUsed && stop.normalizedAddress && (
+                        <p className="text-xs text-violet-500 truncate">
+                          → {stop.normalizedAddress}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-4 shrink-0 text-right">
                       <div className="text-xs text-gray-400">

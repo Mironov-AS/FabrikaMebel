@@ -66,6 +66,7 @@ app.use('/api/llm-config', require('./routes/llmConfig'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/drivers', require('./routes/drivers'));
 app.use('/api/delivery-routes', require('./routes/deliveryRoutes'));
+app.use('/api/geocode-llm', require('./routes/geocodeLlm'));
 
 // Health check
 app.get('/api/health', (req, res) => {
