@@ -294,12 +294,16 @@ router.post('/analyze-file', requireRole('admin', 'sales_manager', 'director'), 
       if (contentText && contentText.trim().length >= 30) {
         const companySetting = await db.get("SELECT value FROM app_settings WHERE key = 'company_name'");
         const myCompanyName = companySetting?.value?.trim() || '';
-        // Keep text compact: first 2500 chars (header/parties/dates) + last 3000 chars (requisites/INN)
+        // Keep text compact: head (parties/dates) + middle (payment terms) + tail (requisites/INN)
         let textForAI = contentText;
-        if (contentText.length > 5000) {
-          const head = contentText.slice(0, 2500);
-          const tail = contentText.slice(-3000);
-          textForAI = head + '\n\n[...]\n\n' + tail;
+        if (contentText.length > 6000) {
+          const head = contentText.slice(0, 2000);
+          // Middle section around 40-65% — where payment/penalty terms typically live
+          const midStart = Math.floor(contentText.length * 0.38);
+          const midEnd = Math.floor(contentText.length * 0.68);
+          const middle = contentText.slice(midStart, midEnd).slice(0, 2500);
+          const tail = contentText.slice(-2000);
+          textForAI = head + '\n\n[...]\n\n' + middle + '\n\n[...]\n\n' + tail;
         }
         extracted = await analyzeContractWithAI(textForAI, myCompanyName);
       }

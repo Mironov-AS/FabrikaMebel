@@ -4,8 +4,11 @@
     "yandex": {
       "apiKey": "YOUR_YANDEX_API_KEY",
       "folderId": "b1g0i9ec4ojktqk4t58k",
-      "model": "",
-      "customModels": [],
+      "model": "gpt://b1g0i9ec4ojktqk4t58k/deepseek-v32/latest",
+      "customModels": [
+        "gpt://b1g0i9ec4ojktqk4t58k/aliceai-llm/latest",
+        "gpt://b1g0i9ec4ojktqk4t58k/deepseek-v32/latest"
+      ],
       "temperature": 0.6,
       "maxTokens": 4000
     },

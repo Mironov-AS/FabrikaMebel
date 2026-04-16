@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">76.92% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/13</span>
+                <span class='fraction'>10/13</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">80% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/40</span>
+                <span class='fraction'>32/40</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">50% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/6</span>
+                <span class='fraction'>3/6</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">81.81% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/11</span>
+                <span class='fraction'>9/11</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line medium'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -185,22 +185,20 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">56x</span>
+<span class="cline-any cline-yes">7x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -237,9 +235,11 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">105x</span>
+<span class="cline-any cline-yes">105x</span>
+<span class="cline-any cline-yes">105x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -300,21 +300,21 @@ import { FileText, Home, ChevronLeft, ChevronRight } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { SERVICES, ALL_NAV_ITEMS } from '../../data/services';
 &nbsp;
-export default function <span class="fstat-no" title="function not covered" >Sidebar({</span> isCollapsed, onToggle }) {
-  const <span class="cstat-no" title="statement not covered" >currentServiceId = <span class="fstat-no" title="function not covered" >useAppStore(s</span> =&gt; <span class="cstat-no" title="statement not covered" >s.currentService);</span></span>
-  const <span class="cstat-no" title="statement not covered" >location = useLocation();</span>
-  const <span class="cstat-no" title="statement not covered" >navigate = useNavigate();</span>
+export default function Sidebar({ isCollapsed, onToggle }) {
+  const currentServiceId = <span class="fstat-no" title="function not covered" >useAppStore(s</span> =&gt; <span class="cstat-no" title="statement not covered" >s.currentService);</span>
+  const location = useLocation();
+  const navigate = useNavigate();
 &nbsp;
-  const service = <span class="cstat-no" title="statement not covered" >SERVICES.<span class="fstat-no" title="function not covered" >find(s</span> =&gt; <span class="cstat-no" title="statement not covered" >s.id === currentServiceId);</span></span>
-  const visibleItems = <span class="cstat-no" title="statement not covered" >service</span>
-    ? ALL_NAV_ITEMS.<span class="fstat-no" title="function not covered" >filter(i</span>tem =&gt; <span class="cstat-no" title="statement not covered" >service.navPaths.includes(item.path))</span>
+  const service = SERVICES.find(s =&gt; s.id === currentServiceId);
+  const visibleItems = service
+    ? <span class="branch-0 cbranch-no" title="branch not covered" >ALL_NAV_ITEMS.<span class="fstat-no" title="function not covered" >filter(i</span>tem =&gt; <span class="cstat-no" title="statement not covered" >service.navPaths.includes(item.path))</span></span>
     : ALL_NAV_ITEMS;
 &nbsp;
   function <span class="fstat-no" title="function not covered" >goHome() {</span>
 <span class="cstat-no" title="statement not covered" >    navigate('/');</span>
   }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >  return (</span>
+  return (
     &lt;aside
       className={`flex flex-col fixed left-0 top-0 h-screen bg-white border-r border-gray-200 z-30 transition-all duration-300 ${
         isCollapsed ? 'w-14' : 'w-60'
@@ -336,7 +336,7 @@ export default function <span class="fstat-no" title="function not covered" >Sid
 &nbsp;
       {/* Service badge */}
       {service &amp;&amp; (
-        &lt;div
+<span class="branch-1 cbranch-no" title="branch not covered" >        &lt;div</span>
           className={`mx-2 mt-3 mb-1 rounded-xl border flex items-center overflow-hidden transition-all duration-300 ${service.lightBg} ${service.borderColor} ${
             isCollapsed ? 'px-2 py-2 justify-center' : 'px-3 py-2 gap-2'
           }`}
@@ -352,10 +352,10 @@ export default function <span class="fstat-no" title="function not covered" >Sid
       {/* Navigation */}
       &lt;nav className="flex-1 overflow-y-auto py-3 px-2"&gt;
         &lt;ul className="space-y-0.5"&gt;
-          {visibleItems.<span class="fstat-no" title="function not covered" >map((i</span>tem) =&gt; {
-            const Icon = <span class="cstat-no" title="statement not covered" >item.icon;</span>
-            const isActive = <span class="cstat-no" title="statement not covered" >location.pathname === item.path || location.pathname.startsWith(item.path + '/');</span>
-<span class="cstat-no" title="statement not covered" >            return (</span>
+          {visibleItems.map((item) =&gt; {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+            return (
               &lt;li key={item.path}&gt;
                 &lt;NavLink
                   to={item.path}
@@ -418,7 +418,7 @@ export default function <span class="fstat-no" title="function not covered" >Sid
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-16T06:38:12.604Z
+                at 2026-04-16T08:35:56.382Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

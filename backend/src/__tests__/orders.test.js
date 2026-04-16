@@ -2,16 +2,17 @@ const request = require('supertest');
 const app = require('../server');
 const db = require('../db');
 
-beforeAll(() => {
-  db.prepare(`
-    INSERT OR IGNORE INTO users (id, name, email, password_hash, role, active)
+beforeAll(async () => {
+  await db.query(`
+    INSERT INTO users (id, name, email, password_hash, role, active)
     VALUES (1, 'Test Admin', 'admin@test.com', 'hash', 'admin', 1)
-  `).run();
+    ON CONFLICT (id) DO NOTHING
+  `);
 });
 
-beforeEach(() => {
-  db.prepare('DELETE FROM order_items').run();
-  db.prepare('DELETE FROM orders').run();
+beforeEach(async () => {
+  await db.query('DELETE FROM order_items');
+  await db.query('DELETE FROM orders');
 });
 
 describe('GET /api/orders', () => {
@@ -23,9 +24,9 @@ describe('GET /api/orders', () => {
   });
 
   it('returns existing orders with specification array', async () => {
-    db.prepare(
-      'INSERT INTO orders (number, status, priority, created_by) VALUES (?, ?, ?, ?)'
-    ).run('ORD-001', 'planned', 'medium', 1);
+    await db.query(
+      "INSERT INTO orders (number, status, priority, created_by) VALUES ('ORD-001', 'planned', 'medium', 1)"
+    );
 
     const res = await request(app).get('/api/orders');
     expect(res.status).toBe(200);
@@ -37,15 +38,15 @@ describe('GET /api/orders', () => {
 
 describe('GET /api/orders/:id', () => {
   it('returns 404 for non-existent order', async () => {
-    const res = await request(app).get('/api/orders/9999');
+    const res = await request(app).get('/api/orders/999999');
     expect(res.status).toBe(404);
     expect(res.body.error).toBeDefined();
   });
 
   it('returns order with specification for existing id', async () => {
-    const { lastInsertRowid } = db.prepare(
-      'INSERT INTO orders (number, status, priority, created_by) VALUES (?, ?, ?, ?)'
-    ).run('ORD-002', 'planned', 'medium', 1);
+    const { lastInsertRowid } = await db.runReturning(
+      "INSERT INTO orders (number, status, priority, created_by) VALUES ('ORD-002', 'planned', 'medium', 1)"
+    );
 
     const res = await request(app).get(`/api/orders/${lastInsertRowid}`);
     expect(res.status).toBe(200);
@@ -121,16 +122,15 @@ describe('POST /api/orders', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.specification).toHaveLength(2);
-    // total = 2*1000 + 4*300 = 3200
     expect(res.body.totalAmount).toBe(3200);
   });
 });
 
 describe('PUT /api/orders/:id', () => {
   it('updates an order and returns updated record', async () => {
-    const { lastInsertRowid } = db.prepare(
-      'INSERT INTO orders (number, status, priority, total_amount, created_by) VALUES (?, ?, ?, ?, ?)'
-    ).run('ORD-UPD', 'planned', 'medium', 500, 1);
+    const { lastInsertRowid } = await db.runReturning(
+      "INSERT INTO orders (number, status, priority, total_amount, created_by) VALUES ('ORD-UPD', 'planned', 'medium', 500, 1)"
+    );
 
     const res = await request(app)
       .put(`/api/orders/${lastInsertRowid}`)
@@ -143,16 +143,16 @@ describe('PUT /api/orders/:id', () => {
 
   it('returns 404 for non-existent order', async () => {
     const res = await request(app)
-      .put('/api/orders/9999')
+      .put('/api/orders/999999')
       .send({ status: 'in_production' });
 
     expect(res.status).toBe(404);
   });
 
   it('returns 400 for invalid status', async () => {
-    const { lastInsertRowid } = db.prepare(
-      'INSERT INTO orders (number, status, priority, created_by) VALUES (?, ?, ?, ?)'
-    ).run('ORD-UPD2', 'planned', 'medium', 1);
+    const { lastInsertRowid } = await db.runReturning(
+      "INSERT INTO orders (number, status, priority, created_by) VALUES ('ORD-UPD2', 'planned', 'medium', 1)"
+    );
 
     const res = await request(app)
       .put(`/api/orders/${lastInsertRowid}`)
@@ -162,11 +162,13 @@ describe('PUT /api/orders/:id', () => {
   });
 
   it('replaces specification when provided and recalculates total', async () => {
-    const { lastInsertRowid } = db.prepare(
-      'INSERT INTO orders (number, status, priority, created_by) VALUES (?, ?, ?, ?)'
-    ).run('ORD-RESPEC', 'planned', 'low', 1);
-    db.prepare('INSERT INTO order_items (order_id, name, quantity, price, status, shipped) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(lastInsertRowid, 'Old Item', 1, 100, 'planned', 0);
+    const { lastInsertRowid } = await db.runReturning(
+      "INSERT INTO orders (number, status, priority, created_by) VALUES ('ORD-RESPEC', 'planned', 'low', 1)"
+    );
+    await db.query(
+      'INSERT INTO order_items (order_id, name, quantity, price, status, shipped) VALUES ($1, $2, $3, $4, $5, $6)',
+      [lastInsertRowid, 'Old Item', 1, 100, 'planned', 0]
+    );
 
     const res = await request(app)
       .put(`/api/orders/${lastInsertRowid}`)
@@ -184,14 +186,15 @@ describe('PUT /api/orders/:id', () => {
 describe('PUT /api/orders/:id/items/:itemId', () => {
   let orderId, itemId;
 
-  beforeEach(() => {
-    const { lastInsertRowid: oid } = db.prepare(
+  beforeEach(async () => {
+    const { lastInsertRowid: oid } = await db.runReturning(
       "INSERT INTO orders (number, status, priority, created_by) VALUES ('ORD-ITEMS', 'in_production', 'medium', 1)"
-    ).run();
+    );
     orderId = oid;
-    const { lastInsertRowid: iid } = db.prepare(
-      "INSERT INTO order_items (order_id, name, quantity, price, status, shipped) VALUES (?, 'Диван', 1, 2000, 'planned', 0)"
-    ).run(orderId);
+    const { lastInsertRowid: iid } = await db.runReturning(
+      "INSERT INTO order_items (order_id, name, quantity, price, status, shipped) VALUES ($1, 'Диван', 1, 2000, 'planned', 0)",
+      [orderId]
+    );
     itemId = iid;
   });
 
@@ -206,16 +209,16 @@ describe('PUT /api/orders/:id/items/:itemId', () => {
 
   it('returns 404 when order does not exist', async () => {
     const res = await request(app)
-      .put(`/api/orders/9999/items/${itemId}`)
+      .put(`/api/orders/999999/items/${itemId}`)
       .send({ status: 'done' });
 
     expect(res.status).toBe(404);
   });
 
   it('returns 404 when item does not belong to the order', async () => {
-    const { lastInsertRowid: otherId } = db.prepare(
+    const { lastInsertRowid: otherId } = await db.runReturning(
       "INSERT INTO orders (number, status, priority, created_by) VALUES ('ORD-OTHER', 'planned', 'medium', 1)"
-    ).run();
+    );
 
     const res = await request(app)
       .put(`/api/orders/${otherId}/items/${itemId}`)
@@ -238,20 +241,20 @@ describe('PUT /api/orders/:id/items/:itemId', () => {
 
 describe('DELETE /api/orders/:id', () => {
   it('deletes an existing order', async () => {
-    const { lastInsertRowid } = db.prepare(
-      'INSERT INTO orders (number, status, priority, created_by) VALUES (?, ?, ?, ?)'
-    ).run('ORD-DEL', 'planned', 'medium', 1);
+    const { lastInsertRowid } = await db.runReturning(
+      "INSERT INTO orders (number, status, priority, created_by) VALUES ('ORD-DEL', 'planned', 'medium', 1)"
+    );
 
     const res = await request(app).delete(`/api/orders/${lastInsertRowid}`);
     expect(res.status).toBe(200);
     expect(res.body.message).toBeDefined();
 
-    const gone = db.prepare('SELECT id FROM orders WHERE id = ?').get(lastInsertRowid);
-    expect(gone).toBeUndefined();
+    const gone = await db.get('SELECT id FROM orders WHERE id = $1', [lastInsertRowid]);
+    expect(gone).toBeNull();
   });
 
   it('returns 404 for non-existent order', async () => {
-    const res = await request(app).delete('/api/orders/9999');
+    const res = await request(app).delete('/api/orders/999999');
     expect(res.status).toBe(404);
   });
 });

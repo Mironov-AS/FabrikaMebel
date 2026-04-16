@@ -2,15 +2,16 @@ const request = require('supertest');
 const app = require('../server');
 const db = require('../db');
 
-beforeAll(() => {
-  db.prepare(`
-    INSERT OR IGNORE INTO users (id, name, email, password_hash, role, active)
+beforeAll(async () => {
+  await db.query(`
+    INSERT INTO users (id, name, email, password_hash, role, active)
     VALUES (1, 'Test Admin', 'admin@test.com', 'hash', 'admin', 1)
-  `).run();
+    ON CONFLICT (id) DO NOTHING
+  `);
 });
 
-beforeEach(() => {
-  db.prepare('DELETE FROM claims').run();
+beforeEach(async () => {
+  await db.query('DELETE FROM claims');
 });
 
 describe('GET /api/claims', () => {
@@ -22,9 +23,9 @@ describe('GET /api/claims', () => {
   });
 
   it('returns existing claims', async () => {
-    db.prepare(
+    await db.query(
       "INSERT INTO claims (number, status, created_by) VALUES ('REC-001', 'open', 1)"
-    ).run();
+    );
 
     const res = await request(app).get('/api/claims');
     expect(res.status).toBe(200);
@@ -36,15 +37,15 @@ describe('GET /api/claims', () => {
 
 describe('GET /api/claims/:id', () => {
   it('returns 404 for non-existent claim', async () => {
-    const res = await request(app).get('/api/claims/9999');
+    const res = await request(app).get('/api/claims/999999');
     expect(res.status).toBe(404);
     expect(res.body.error).toBeDefined();
   });
 
   it('returns claim for existing id', async () => {
-    const { lastInsertRowid } = db.prepare(
+    const { lastInsertRowid } = await db.runReturning(
       "INSERT INTO claims (number, status, description, created_by) VALUES ('REC-GET', 'open', 'Описание', 1)"
-    ).run();
+    );
 
     const res = await request(app).get(`/api/claims/${lastInsertRowid}`);
     expect(res.status).toBe(200);
@@ -100,9 +101,9 @@ describe('POST /api/claims', () => {
 
 describe('PUT /api/claims/:id', () => {
   it('updates claim status and resolution', async () => {
-    const { lastInsertRowid } = db.prepare(
+    const { lastInsertRowid } = await db.runReturning(
       "INSERT INTO claims (number, status, created_by) VALUES ('REC-UPD', 'open', 1)"
-    ).run();
+    );
 
     const res = await request(app)
       .put(`/api/claims/${lastInsertRowid}`)
@@ -115,16 +116,16 @@ describe('PUT /api/claims/:id', () => {
 
   it('returns 404 for non-existent claim', async () => {
     const res = await request(app)
-      .put('/api/claims/9999')
+      .put('/api/claims/999999')
       .send({ status: 'closed' });
 
     expect(res.status).toBe(404);
   });
 
   it('returns 400 for invalid status', async () => {
-    const { lastInsertRowid } = db.prepare(
+    const { lastInsertRowid } = await db.runReturning(
       "INSERT INTO claims (number, status, created_by) VALUES ('REC-BAD', 'open', 1)"
-    ).run();
+    );
 
     const res = await request(app)
       .put(`/api/claims/${lastInsertRowid}`)
@@ -135,9 +136,9 @@ describe('PUT /api/claims/:id', () => {
   });
 
   it('transitions through all valid statuses', async () => {
-    const { lastInsertRowid } = db.prepare(
+    const { lastInsertRowid } = await db.runReturning(
       "INSERT INTO claims (number, status, created_by) VALUES ('REC-FLOW', 'open', 1)"
-    ).run();
+    );
 
     for (const status of ['in_review', 'resolved', 'closed']) {
       const res = await request(app)
@@ -149,9 +150,9 @@ describe('PUT /api/claims/:id', () => {
   });
 
   it('updates responsible person', async () => {
-    const { lastInsertRowid } = db.prepare(
+    const { lastInsertRowid } = await db.runReturning(
       "INSERT INTO claims (number, status, created_by) VALUES ('REC-RESP', 'open', 1)"
-    ).run();
+    );
 
     const res = await request(app)
       .put(`/api/claims/${lastInsertRowid}`)

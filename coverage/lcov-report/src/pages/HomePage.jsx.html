@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/13</span>
+                <span class='fraction'>13/13</span>
             </div>
         
             
@@ -37,16 +37,16 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/7</span>
+                <span class='fraction'>7/7</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/11</span>
+                <span class='fraction'>11/11</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -145,22 +145,20 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -178,11 +176,13 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">48x</span>
+<span class="cline-any cline-yes">48x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -219,21 +219,21 @@ import { FileText } from 'lucide-react';
 import { SERVICES } from '../data/services';
 import useAppStore from '../store/appStore';
 &nbsp;
-export default function <span class="fstat-no" title="function not covered" >HomePage() {</span>
-  const <span class="cstat-no" title="statement not covered" >navigate = useNavigate();</span>
-  const <span class="cstat-no" title="statement not covered" >setService = <span class="fstat-no" title="function not covered" >useAppStore(s</span> =&gt; <span class="cstat-no" title="statement not covered" >s.setService);</span></span>
-  const <span class="cstat-no" title="statement not covered" >clearService = <span class="fstat-no" title="function not covered" >useAppStore(s</span> =&gt; <span class="cstat-no" title="statement not covered" >s.clearService);</span></span>
+export default function HomePage() {
+  const navigate = useNavigate();
+  const setService = useAppStore(s =&gt; s.setService);
+  const clearService = useAppStore(s =&gt; s.clearService);
 &nbsp;
-<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >  useEffect(() =&gt; {</span></span>
-<span class="cstat-no" title="statement not covered" >    clearService();</span>
+  useEffect(() =&gt; {
+    clearService();
   }, []);
 &nbsp;
-  function <span class="fstat-no" title="function not covered" >handleSelect(s</span>ervice) {
-<span class="cstat-no" title="statement not covered" >    setService(service.id);</span>
-<span class="cstat-no" title="statement not covered" >    navigate(service.defaultPath);</span>
+  function handleSelect(service) {
+    setService(service.id);
+    navigate(service.defaultPath);
   }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >  return (</span>
+  return (
     &lt;div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col"&gt;
       {/* Header */}
       &lt;header className="flex items-center gap-3 px-8 py-5 border-b border-white/60 bg-white/70 backdrop-blur-sm"&gt;
@@ -252,12 +252,12 @@ export default function <span class="fstat-no" title="function not covered" >Hom
           &lt;/div&gt;
 &nbsp;
           &lt;div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4"&gt;
-            {SERVICES.<span class="fstat-no" title="function not covered" >map((s</span>ervice) =&gt; {
-              const Icon = <span class="cstat-no" title="statement not covered" >service.icon;</span>
-<span class="cstat-no" title="statement not covered" >              return (</span>
+            {SERVICES.map((service) =&gt; {
+              const Icon = service.icon;
+              return (
                 &lt;button
                   key={service.id}
-<span class="fstat-no" title="function not covered" >                  onClick={() =&gt; <span class="cstat-no" title="statement not covered" >h</span>andleSelect(service)}</span>
+                  onClick={() =&gt; handleSelect(service)}
                   className={`
                     group relative flex flex-col items-center gap-3 p-6 rounded-2xl
                     border-2 ${service.borderColor} ${service.lightBg}
@@ -295,7 +295,7 @@ export default function <span class="fstat-no" title="function not covered" >Hom
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-16T06:38:12.604Z
+                at 2026-04-16T08:35:56.382Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

@@ -2,19 +2,21 @@ const request = require('supertest');
 const app = require('../server');
 const db = require('../db');
 
-beforeAll(() => {
-  db.prepare(`
-    INSERT OR IGNORE INTO users (id, name, email, password_hash, role, active)
+beforeAll(async () => {
+  await db.query(`
+    INSERT INTO users (id, name, email, password_hash, role, active)
     VALUES (1, 'Test Admin', 'admin@test.com', 'hash', 'admin', 1)
-  `).run();
+    ON CONFLICT (id) DO NOTHING
+  `);
 });
 
-beforeEach(() => {
-  db.prepare('DELETE FROM payments').run();
-  db.prepare('DELETE FROM shipment_items').run();
-  db.prepare('DELETE FROM shipments').run();
-  db.prepare('DELETE FROM order_items').run();
-  db.prepare('DELETE FROM orders').run();
+beforeEach(async () => {
+  await db.query('DELETE FROM payments WHERE shipment_id IS NOT NULL OR invoice_id IS NULL');
+  await db.query('DELETE FROM payments');
+  await db.query('DELETE FROM shipment_items');
+  await db.query('DELETE FROM shipments');
+  await db.query('DELETE FROM order_items');
+  await db.query('DELETE FROM orders');
 });
 
 describe('GET /api/payments', () => {
@@ -26,12 +28,14 @@ describe('GET /api/payments', () => {
   });
 
   it('returns payments sorted by due_date ascending', async () => {
-    db.prepare(
-      "INSERT INTO payments (amount, due_date, status, invoice_number) VALUES (?, ?, 'pending', ?)"
-    ).run(1000, '2026-03-01', 'INV-LATE');
-    db.prepare(
-      "INSERT INTO payments (amount, due_date, status, invoice_number) VALUES (?, ?, 'pending', ?)"
-    ).run(2000, '2026-01-01', 'INV-EARLY');
+    await db.query(
+      "INSERT INTO payments (amount, due_date, status, invoice_number) VALUES ($1, $2, 'pending', $3)",
+      [1000, '2026-03-01', 'INV-LATE']
+    );
+    await db.query(
+      "INSERT INTO payments (amount, due_date, status, invoice_number) VALUES ($1, $2, 'pending', $3)",
+      [2000, '2026-01-01', 'INV-EARLY']
+    );
 
     const res = await request(app).get('/api/payments');
     expect(res.status).toBe(200);
@@ -43,15 +47,16 @@ describe('GET /api/payments', () => {
 
 describe('GET /api/payments/:id', () => {
   it('returns 404 for non-existent payment', async () => {
-    const res = await request(app).get('/api/payments/9999');
+    const res = await request(app).get('/api/payments/999999');
     expect(res.status).toBe(404);
     expect(res.body.error).toBeDefined();
   });
 
   it('returns payment for existing id', async () => {
-    const { lastInsertRowid } = db.prepare(
-      "INSERT INTO payments (amount, due_date, status, invoice_number) VALUES (?, ?, 'pending', ?)"
-    ).run(5000, '2026-06-01', 'INV-001');
+    const { lastInsertRowid } = await db.runReturning(
+      "INSERT INTO payments (amount, due_date, status, invoice_number) VALUES ($1, $2, 'pending', $3)",
+      [5000, '2026-06-01', 'INV-001']
+    );
 
     const res = await request(app).get(`/api/payments/${lastInsertRowid}`);
     expect(res.status).toBe(200);
@@ -88,9 +93,10 @@ describe('POST /api/payments', () => {
 
 describe('PUT /api/payments/:id/register', () => {
   it('registers a payment and updates status to paid', async () => {
-    const { lastInsertRowid } = db.prepare(
-      "INSERT INTO payments (amount, due_date, status, invoice_number) VALUES (?, ?, 'pending', ?)"
-    ).run(5000, '2026-06-01', 'INV-REG');
+    const { lastInsertRowid } = await db.runReturning(
+      "INSERT INTO payments (amount, due_date, status, invoice_number) VALUES ($1, $2, 'pending', $3)",
+      [5000, '2026-06-01', 'INV-REG']
+    );
 
     const res = await request(app)
       .put(`/api/payments/${lastInsertRowid}/register`)
@@ -104,9 +110,10 @@ describe('PUT /api/payments/:id/register', () => {
   });
 
   it('returns 400 when paidAmount is missing', async () => {
-    const { lastInsertRowid } = db.prepare(
-      "INSERT INTO payments (amount, due_date, status, invoice_number) VALUES (?, ?, 'pending', ?)"
-    ).run(1000, '2026-06-01', 'INV-NO-AMT');
+    const { lastInsertRowid } = await db.runReturning(
+      "INSERT INTO payments (amount, due_date, status, invoice_number) VALUES ($1, $2, 'pending', $3)",
+      [1000, '2026-06-01', 'INV-NO-AMT']
+    );
 
     const res = await request(app)
       .put(`/api/payments/${lastInsertRowid}/register`)
@@ -117,9 +124,10 @@ describe('PUT /api/payments/:id/register', () => {
   });
 
   it('returns 400 when paidDate is missing', async () => {
-    const { lastInsertRowid } = db.prepare(
-      "INSERT INTO payments (amount, due_date, status, invoice_number) VALUES (?, ?, 'pending', ?)"
-    ).run(1000, '2026-06-01', 'INV-NO-DATE');
+    const { lastInsertRowid } = await db.runReturning(
+      "INSERT INTO payments (amount, due_date, status, invoice_number) VALUES ($1, $2, 'pending', $3)",
+      [1000, '2026-06-01', 'INV-NO-DATE']
+    );
 
     const res = await request(app)
       .put(`/api/payments/${lastInsertRowid}/register`)
@@ -131,27 +139,24 @@ describe('PUT /api/payments/:id/register', () => {
 
   it('returns 404 for non-existent payment', async () => {
     const res = await request(app)
-      .put('/api/payments/9999/register')
+      .put('/api/payments/999999/register')
       .send({ paidAmount: 1000, paidDate: '2026-05-25' });
 
     expect(res.status).toBe(404);
   });
 
   it('auto-completes linked order when all shipments are paid', async () => {
-    // Create order in 'shipped' status
-    const { lastInsertRowid: orderId } = db.prepare(
-      "INSERT INTO orders (number, status, priority, created_by) VALUES (?, 'shipped', 'medium', 1)"
-    ).run('ORD-COMPLETE');
-
-    // Create shipment linked to the order
-    const { lastInsertRowid: shipmentId } = db.prepare(
-      "INSERT INTO shipments (order_id, order_number, invoice_number, amount, status) VALUES (?, ?, 'INV-COMP', 5000, 'shipped')"
-    ).run(orderId, 'ORD-COMPLETE');
-
-    // Create payment linked to the shipment
-    const { lastInsertRowid: paymentId } = db.prepare(
-      "INSERT INTO payments (shipment_id, amount, due_date, status, invoice_number) VALUES (?, 5000, '2026-06-01', 'pending', 'INV-COMP')"
-    ).run(shipmentId);
+    const { lastInsertRowid: orderId } = await db.runReturning(
+      "INSERT INTO orders (number, status, priority, created_by) VALUES ('ORD-COMPLETE', 'shipped', 'medium', 1)"
+    );
+    const { lastInsertRowid: shipmentId } = await db.runReturning(
+      "INSERT INTO shipments (order_id, order_number, invoice_number, amount, status) VALUES ($1, 'ORD-COMPLETE', 'INV-COMP', 5000, 'shipped')",
+      [orderId]
+    );
+    const { lastInsertRowid: paymentId } = await db.runReturning(
+      "INSERT INTO payments (shipment_id, amount, due_date, status, invoice_number) VALUES ($1, 5000, '2026-06-01', 'pending', 'INV-COMP')",
+      [shipmentId]
+    );
 
     const res = await request(app)
       .put(`/api/payments/${paymentId}/register`)
@@ -160,17 +165,17 @@ describe('PUT /api/payments/:id/register', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('paid');
 
-    // Order should now be 'completed'
-    const order = db.prepare('SELECT status FROM orders WHERE id = ?').get(orderId);
+    const order = await db.get('SELECT status FROM orders WHERE id = $1', [orderId]);
     expect(order.status).toBe('completed');
   });
 });
 
 describe('PUT /api/payments/:id', () => {
   it('updates payment status and penalty info', async () => {
-    const { lastInsertRowid } = db.prepare(
-      "INSERT INTO payments (amount, due_date, status, invoice_number) VALUES (?, ?, 'pending', ?)"
-    ).run(2000, '2026-01-01', 'INV-UPD');
+    const { lastInsertRowid } = await db.runReturning(
+      "INSERT INTO payments (amount, due_date, status, invoice_number) VALUES ($1, $2, 'pending', $3)",
+      [2000, '2026-01-01', 'INV-UPD']
+    );
 
     const res = await request(app)
       .put(`/api/payments/${lastInsertRowid}`)
@@ -184,7 +189,7 @@ describe('PUT /api/payments/:id', () => {
 
   it('returns 404 for non-existent payment', async () => {
     const res = await request(app)
-      .put('/api/payments/9999')
+      .put('/api/payments/999999')
       .send({ status: 'overdue' });
 
     expect(res.status).toBe(404);
