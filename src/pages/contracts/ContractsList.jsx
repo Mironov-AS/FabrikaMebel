@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Upload, Filter,
@@ -20,6 +20,13 @@ function AddCpFromImportModal({ isOpen, initialData, onClose, onSaved }) {
   const [form, setForm] = useState({ ...CP_EMPTY, ...initialData });
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setForm({ ...CP_EMPTY, ...initialData });
+      setErrors({});
+    }
+  }, [isOpen, initialData]);
 
   const set = (key, val) => setForm(p => ({ ...p, [key]: val }));
 
