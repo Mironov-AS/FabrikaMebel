@@ -274,7 +274,8 @@ async function handleYandex(res, pCfg, systemPrompt, history, message) {
   if (folderId.startsWith('gpt://')) {
     const parts = folderId.slice(6).split('/');
     folderId = parts[0];
-    if (parts.length > 1) modelPath = parts.slice(1).join('/');
+    // Only use URI's model path if no model is explicitly configured
+    if (!pCfg.model && parts.length > 1) modelPath = parts.slice(1).join('/');
   }
 
   const modelUri = `gpt://${folderId}/${modelPath}`;
