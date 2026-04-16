@@ -268,10 +268,19 @@ async function handleYandex(res, pCfg, systemPrompt, history, message) {
     return res.end();
   }
 
-  const modelUri = `gpt://${pCfg.folderId}/${pCfg.model || 'yandexgpt/latest'}`;
+  // Parse folderId — user may have accidentally entered a full gpt:// URI
+  let folderId = pCfg.folderId;
+  let modelPath = pCfg.model || 'yandexgpt/latest';
+  if (folderId.startsWith('gpt://')) {
+    const parts = folderId.slice(6).split('/');
+    folderId = parts[0];
+    if (parts.length > 1) modelPath = parts.slice(1).join('/');
+  }
+
+  const modelUri = `gpt://${folderId}/${modelPath}`;
   const messages = buildYandexMessages(systemPrompt, history, message);
   const httpRes = await yandexStream(
-    pCfg.apiKey, pCfg.folderId, modelUri, messages,
+    pCfg.apiKey, folderId, modelUri, messages,
     pCfg.temperature ?? 0.6, pCfg.maxTokens ?? 4000
   );
 
@@ -297,7 +306,7 @@ async function handleYandex(res, pCfg, systemPrompt, history, message) {
       if (isGrpcError) {
         try {
           const fallbackRes = await yandexOpenAIStream(
-            pCfg.apiKey, pCfg.folderId, modelUri, messages,
+            pCfg.apiKey, folderId, modelUri, messages,
             pCfg.temperature ?? 0.6, pCfg.maxTokens ?? 4000
           );
           if (fallbackRes.statusCode !== 200) {

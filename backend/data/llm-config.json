@@ -3,8 +3,8 @@
   "providers": {
     "yandex": {
       "apiKey": "YOUR_YANDEX_API_KEY",
-      "folderId": "gpt://b1g0i9ec4ojktqk4t58k/aliceai-llm/latest",
-      "model": "deepseek-v32/latest",
+      "folderId": "b1g0i9ec4ojktqk4t58k",
+      "model": "aliceai-llm/latest",
       "temperature": 0.6,
       "maxTokens": 4000
     },

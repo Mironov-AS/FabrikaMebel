@@ -108,8 +108,13 @@ router.post('/test/:provider', async (req, res) => {
       if (!pCfg.apiKey || !pCfg.folderId) {
         return res.json({ ok: false, error: 'Требуются API Key и Folder ID' });
       }
+      // Parse folderId — user may have accidentally entered a full gpt:// URI
+      let folderId = pCfg.folderId;
+      if (folderId.startsWith('gpt://')) {
+        folderId = folderId.slice(6).split('/')[0];
+      }
       const body = JSON.stringify({
-        modelUri: `gpt://${pCfg.folderId}/yandexgpt-lite/latest`,
+        modelUri: `gpt://${folderId}/yandexgpt-lite/latest`,
         completionOptions: { stream: false, temperature: 0.1, maxTokens: 5 },
         messages: [{ role: 'user', text: 'тест' }],
       });
@@ -118,7 +123,7 @@ router.post('/test/:provider', async (req, res) => {
         path: '/foundationModels/v1/completion',
         headers: {
           'Authorization': `Api-Key ${pCfg.apiKey}`,
-          'x-folder-id': pCfg.folderId,
+          'x-folder-id': folderId,
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(body),
         },

@@ -15,7 +15,7 @@ const LLM_PROVIDERS = [
     models: ['yandexgpt/latest', 'yandexgpt-lite/latest'],
     fields: [
       { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'AQVN...' },
-      { key: 'folderId', label: 'Folder ID', type: 'text', required: true, placeholder: 'b1g0...' },
+      { key: 'folderId', label: 'Folder ID', type: 'text', required: true, placeholder: 'b1g0i9ec4ojktqk4t58k', hint: 'Только ID папки, без gpt://' },
     ],
   },
   {
@@ -344,6 +344,9 @@ export default function LLMTab() {
                 {field.key === 'apiKey' && llmConfig?.providers?.[llmModalProvider.id]?.apiKeySet && (
                   <p className="text-xs text-gray-400 mt-1">Оставьте пустым, чтобы не менять текущий ключ</p>
                 )}
+                {field.hint && (
+                  <p className="text-xs text-gray-400 mt-1">{field.hint}</p>
+                )}
               </div>
             ))}
 
@@ -351,13 +354,29 @@ export default function LLMTab() {
               <label className="form-label">Модель</label>
               <select
                 className="form-input"
-                value={llmModalFields.model || llmModalProvider.models[0]}
-                onChange={(e) => setLlmModalFields((f) => ({ ...f, model: e.target.value }))}
+                value={llmModalProvider.models.includes(llmModalFields.model) ? llmModalFields.model : '__custom__'}
+                onChange={(e) => {
+                  if (e.target.value === '__custom__') {
+                    setLlmModalFields((f) => ({ ...f, model: '' }));
+                  } else {
+                    setLlmModalFields((f) => ({ ...f, model: e.target.value }));
+                  }
+                }}
               >
                 {llmModalProvider.models.map((m) => (
                   <option key={m} value={m}>{m}</option>
                 ))}
+                <option value="__custom__">Своя модель...</option>
               </select>
+              {!llmModalProvider.models.includes(llmModalFields.model) && (
+                <input
+                  type="text"
+                  className="form-input mt-2"
+                  placeholder="Например: aliceai-llm/latest"
+                  value={llmModalFields.model}
+                  onChange={(e) => setLlmModalFields((f) => ({ ...f, model: e.target.value }))}
+                />
+              )}
             </div>
 
             <div>
