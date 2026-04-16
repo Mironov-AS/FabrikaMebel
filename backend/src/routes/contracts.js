@@ -256,14 +256,24 @@ router.post('/analyze-file', requireRole('admin', 'sales_manager', 'director'), 
     try {
       const contentText = await extractText(req.file.buffer, req.file.mimetype);
 
-      // Upload to S3
-      const s3Key = `${S3_PREFIX}${uuidv4()}${path.extname(req.file.originalname)}`;
-      await getS3Client().send(new PutObjectCommand({
-        Bucket: S3_BUCKET(),
-        Key: s3Key,
-        Body: req.file.buffer,
-        ContentType: req.file.mimetype,
-      }));
+      // Upload to S3 (optional — if S3 is not configured, skip gracefully)
+      let s3Key = null;
+      const s3Configured = S3_BUCKET() && S3_BUCKET() !== 'your_bucket_name' &&
+        process.env.S3_ACCESS_KEY && process.env.S3_ACCESS_KEY !== 'your_access_key';
+      if (s3Configured) {
+        try {
+          s3Key = `${S3_PREFIX}${uuidv4()}${path.extname(req.file.originalname)}`;
+          await getS3Client().send(new PutObjectCommand({
+            Bucket: S3_BUCKET(),
+            Key: s3Key,
+            Body: req.file.buffer,
+            ContentType: req.file.mimetype,
+          }));
+        } catch (s3Err) {
+          console.warn('S3 upload failed, continuing without file storage:', s3Err.message);
+          s3Key = null;
+        }
+      }
 
       const fileInfo = {
         storedFileName: s3Key,
