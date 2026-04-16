@@ -1,11 +1,13 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { authenticate, requireRole, logAudit } = require('../middleware/auth');
 const { sanitizeStr, checkLengths } = require('../middleware/validate');
+const { readConfig } = require('./llmConfig');
 
 // ─── Text extraction helpers ───────────────────────────────────────────────────
 async function extractText(filePath, mimetype) {
@@ -35,6 +37,100 @@ async function extractText(filePath, mimetype) {
 
 const UPLOADS_DIR = path.resolve(__dirname, '../../uploads/contracts');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+// ─── AI contract analysis ──────────────────────────────────────────────────────
+async function analyzeContractWithAI(text) {
+  const cfg = readConfig();
+  const active = cfg.activeProvider || 'anthropic';
+  const pCfg = cfg.providers?.[active] || {};
+
+  const prompt = `Ты — специалист по анализу договоров. Проанализируй текст договора и верни JSON строго следующей структуры (без пояснений, только JSON):
+{
+  "number": "номер договора или null",
+  "date": "дата в формате YYYY-MM-DD или null",
+  "validUntil": "дата окончания действия в формате YYYY-MM-DD или null",
+  "amount": число или null,
+  "subject": "предмет договора (краткое описание) или null",
+  "paymentDelay": число (дней отсрочки) или null,
+  "penaltyRate": число (процент штрафа за день) или null,
+  "counterparty": {
+    "name": "полное название контрагента (не нашей компании) или null",
+    "inn": "ИНН контрагента или null",
+    "kpp": "КПП контрагента или null",
+    "address": "юридический адрес контрагента или null",
+    "delivery_address": null,
+    "contact": "контактное лицо или null",
+    "phone": "телефон или null",
+    "email": "email или null"
+  }
+}
+
+Текст договора:
+${text}`;
+
+  try {
+    if (active === 'anthropic' && pCfg.apiKey) {
+      const Anthropic = require('@anthropic-ai/sdk');
+      const client = new Anthropic({ apiKey: pCfg.apiKey });
+      const msg = await client.messages.create({
+        model: pCfg.model || 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        temperature: 0.1,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      const raw = msg.content[0]?.text || '';
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) return JSON.parse(match[0]);
+    }
+
+    if ((active === 'openai' || active === 'yandex') && pCfg.apiKey) {
+      let hostname, urlPath, authHeader, extraHeaders = {};
+      if (active === 'yandex') {
+        hostname = 'llm.api.cloud.yandex.net';
+        urlPath = '/v1/chat/completions';
+        authHeader = `Api-Key ${pCfg.apiKey}`;
+        if (pCfg.folderId) extraHeaders['x-folder-id'] = pCfg.folderId;
+      } else {
+        const base = new URL((pCfg.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, ''));
+        hostname = base.hostname;
+        urlPath = base.pathname + '/chat/completions';
+        authHeader = `Bearer ${pCfg.apiKey}`;
+      }
+      const body = JSON.stringify({
+        model: pCfg.model || (active === 'yandex' ? 'yandexgpt/latest' : 'gpt-4o'),
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 2000,
+        temperature: 0.1,
+        stream: false,
+      });
+      const raw = await new Promise((resolve, reject) => {
+        const req = https.request({
+          hostname, path: urlPath, method: 'POST',
+          headers: {
+            'Authorization': authHeader,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body),
+            ...extraHeaders,
+          },
+        }, (httpRes) => {
+          let data = '';
+          httpRes.on('data', c => { data += c; });
+          httpRes.on('end', () => resolve(data));
+        });
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+      });
+      const json = JSON.parse(raw);
+      const content = json.choices?.[0]?.message?.content || '';
+      const match = content.match(/\{[\s\S]*\}/);
+      if (match) return JSON.parse(match[0]);
+    }
+  } catch (err) {
+    console.warn('AI contract analysis error:', err.message);
+  }
+  return null;
+}
 
 const ALLOWED_MIMETYPES = new Set([
   'application/pdf',
@@ -115,6 +211,52 @@ router.get('/files/all', (req, res) => {
   res.json(files);
 });
 
+// POST /api/contracts/analyze-file — upload + AI extraction (before contract creation)
+router.post('/analyze-file', requireRole('admin', 'sales_manager', 'director'), (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'Файл слишком большой (максимум 20 МБ)' });
+      return res.status(400).json({ error: err.message || 'Ошибка загрузки файла' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'Файл не передан' });
+
+    const filePath = path.join(UPLOADS_DIR, req.file.filename);
+    const contentText = await extractText(filePath, req.file.mimetype);
+
+    const fileInfo = {
+      storedFileName: req.file.filename,
+      originalName: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+    };
+
+    // AI analysis
+    let extracted = null;
+    if (contentText && contentText.trim().length >= 30) {
+      extracted = await analyzeContractWithAI(contentText.slice(0, 15000));
+    }
+
+    // Find matching counterparty
+    let matchedCounterparty = null;
+    if (extracted?.counterparty) {
+      const all = db.prepare('SELECT * FROM counterparties').all();
+      const cp = extracted.counterparty;
+      if (cp.inn) {
+        matchedCounterparty = all.find(c => c.inn && c.inn.trim() === cp.inn.trim()) || null;
+      }
+      if (!matchedCounterparty && cp.name) {
+        const nl = cp.name.toLowerCase().replace(/[«»"']/g, '').trim();
+        matchedCounterparty = all.find(c => {
+          const cl = c.name.toLowerCase().replace(/[«»"']/g, '').trim();
+          return cl === nl || cl.includes(nl) || nl.includes(cl);
+        }) || null;
+      }
+    }
+
+    res.json({ ...fileInfo, extracted, matchedCounterparty: matchedCounterparty || null });
+  });
+});
+
 // GET /api/contracts
 router.get('/', (req, res) => {
   const rows = db.prepare('SELECT * FROM contracts ORDER BY created_at DESC').all();
@@ -129,10 +271,11 @@ router.get('/:id', (req, res) => {
 });
 
 // POST /api/contracts — sales_manager, admin
-router.post('/', requireRole('admin', 'sales_manager', 'director'), (req, res) => {
+router.post('/', requireRole('admin', 'sales_manager', 'director'), async (req, res) => {
   const {
     number, counterpartyId, date, validUntil, status, amount, subject,
     paymentDelay, penaltyRate, conditions = [], obligations = [],
+    tempFile,
   } = req.body;
 
   if (!number) return res.status(400).json({ error: 'Номер договора обязателен' });
@@ -172,6 +315,22 @@ router.post('/', requireRole('admin', 'sales_manager', 'director'), (req, res) =
   db.prepare('INSERT INTO contract_versions (contract_id, version_num, date, author, changes) VALUES (?, 1, ?, ?, ?)').run(contractId, date || new Date().toISOString().slice(0, 10), req.user.name, 'Создание договора');
 
   logAudit(req.user.id, req.user.name, `Создан договор ${number}`, 'Договор', contractId, req.ip);
+
+  // Link pre-uploaded file from import if provided
+  if (tempFile?.storedFileName) {
+    const filePath = path.join(UPLOADS_DIR, tempFile.storedFileName);
+    if (fs.existsSync(filePath)) {
+      try {
+        const fileText = await extractText(filePath, tempFile.mimetype);
+        db.prepare(`
+          INSERT INTO contract_files (contract_id, original_name, stored_name, mimetype, size, uploaded_by, uploaded_by_name, content_text)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(contractId, tempFile.originalName, tempFile.storedFileName, tempFile.mimetype, tempFile.size || 0, req.user.id, req.user.name, fileText || null);
+      } catch (e) {
+        console.warn('Failed to link temp file to contract:', e.message);
+      }
+    }
+  }
 
   const contract = buildContract(db.prepare('SELECT * FROM contracts WHERE id = ?').get(contractId));
   res.status(201).json(contract);

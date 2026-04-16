@@ -4,7 +4,7 @@
     "yandex": {
       "apiKey": "YOUR_YANDEX_API_KEY",
       "folderId": "b1g0i9ec4ojktqk4t58k",
-      "model": "deepseek-v32/latest",
+      "model": "",
       "temperature": 0.6,
       "maxTokens": 4000
     },

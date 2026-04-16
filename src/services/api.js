@@ -30,6 +30,11 @@ export const contractsApi = {
   create: (data) => api.post('/contracts', data),
   update: (id, data) => api.put(`/contracts/${id}`, data),
   delete: (id) => api.delete(`/contracts/${id}`),
+  analyzeFile: (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/contracts/analyze-file', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
   // Files
   getAllFiles: () => api.get('/contracts/files/all'),
   getFiles: (contractId) => api.get(`/contracts/${contractId}/files`),
