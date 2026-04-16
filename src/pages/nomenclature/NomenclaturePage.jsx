@@ -85,11 +85,14 @@ function NomenclatureForm({ form, onChange, errors }) {
 
 export default function NomenclaturePage() {
   const nomenclature                = useAppStore(s => s.nomenclature);
+  const currentService              = useAppStore(s => s.currentService);
   const addNomenclatureItem         = useAppStore(s => s.addNomenclatureItem);
   const updateNomenclatureItem      = useAppStore(s => s.updateNomenclatureItem);
   const deleteNomenclatureItem      = useAppStore(s => s.deleteNomenclatureItem);
   const discontinueNomenclatureItem = useAppStore(s => s.discontinueNomenclatureItem);
   const restoreNomenclatureItem     = useAppStore(s => s.restoreNomenclatureItem);
+
+  const canEdit = currentService === 'nomenclature';
 
   const [search, setSearch]                 = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -149,13 +152,25 @@ export default function NomenclaturePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Номенклатура</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Управление справочником производимых товаров</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {canEdit ? 'Управление справочником производимых товаров' : 'Просмотр справочника производимых товаров'}
+          </p>
         </div>
-        <button onClick={addModal.open} className="btn-primary flex items-center gap-2">
-          <Plus size={16} />
-          Добавить позицию
-        </button>
+        {canEdit && (
+          <button onClick={addModal.open} className="btn-primary flex items-center gap-2">
+            <Plus size={16} />
+            Добавить позицию
+          </button>
+        )}
       </div>
+
+      {/* Read-only notice */}
+      {!canEdit && (
+        <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5">
+          <AlertTriangle size={15} className="shrink-0" />
+          Создание и редактирование номенклатуры доступно только в сервисе <strong className="ml-1">«Номенклатура»</strong>.
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
@@ -233,7 +248,7 @@ export default function NomenclaturePage() {
           <p className="text-gray-500 text-sm">
             {search || categoryFilter || statusFilter ? 'Ничего не найдено' : 'Номенклатура пуста'}
           </p>
-          {!search && !categoryFilter && !statusFilter && (
+          {!search && !categoryFilter && !statusFilter && canEdit && (
             <button onClick={addModal.open} className="mt-3 text-indigo-600 text-sm hover:underline">
               Добавить первую позицию
             </button>
@@ -250,7 +265,7 @@ export default function NomenclaturePage() {
                 <th className="text-left px-4 py-3 font-medium text-gray-600 w-20">Ед.</th>
                 <th className="text-right px-4 py-3 font-medium text-gray-600 w-32">Цена</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600 w-44">Статус</th>
-                <th className="px-4 py-3 w-28" />
+                {canEdit && <th className="px-4 py-3 w-28" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -277,48 +292,50 @@ export default function NomenclaturePage() {
                         {sc.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 justify-end">
-                        <button
-                          onClick={() => editModal.open(item, it => ({
-                            article:     it.article     || '',
-                            name:        it.name        || '',
-                            category:    it.category    || PRODUCT_CATEGORIES[0],
-                            unit:        it.unit        || 'шт',
-                            price:       String(it.price || ''),
-                            description: it.description || '',
-                          }))}
-                          className="p-1.5 rounded-lg text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
-                          title="Редактировать"
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        {isDiscontinued ? (
+                    {canEdit && (
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1 justify-end">
                           <button
-                            onClick={() => restoreNomenclatureItem(item.id)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:bg-green-50 hover:text-green-600 transition-colors"
-                            title="Восстановить в производство"
+                            onClick={() => editModal.open(item, it => ({
+                              article:     it.article     || '',
+                              name:        it.name        || '',
+                              category:    it.category    || PRODUCT_CATEGORIES[0],
+                              unit:        it.unit        || 'шт',
+                              price:       String(it.price || ''),
+                              description: it.description || '',
+                            }))}
+                            className="p-1.5 rounded-lg text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                            title="Редактировать"
                           >
-                            <RotateCcw size={14} />
+                            <Pencil size={14} />
                           </button>
-                        ) : (
+                          {isDiscontinued ? (
+                            <button
+                              onClick={() => restoreNomenclatureItem(item.id)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:bg-green-50 hover:text-green-600 transition-colors"
+                              title="Восстановить в производство"
+                            >
+                              <RotateCcw size={14} />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => discontinueModal.open(item)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+                              title="Снять с производства"
+                            >
+                              <Ban size={14} />
+                            </button>
+                          )}
                           <button
-                            onClick={() => discontinueModal.open(item)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:bg-orange-50 hover:text-orange-600 transition-colors"
-                            title="Снять с производства"
+                            onClick={() => deleteModal.open(item)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                            title="Удалить"
                           >
-                            <Ban size={14} />
+                            <Trash2 size={14} />
                           </button>
-                        )}
-                        <button
-                          onClick={() => deleteModal.open(item)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                          title="Удалить"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
