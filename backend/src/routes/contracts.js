@@ -96,8 +96,16 @@ ${text}`;
         urlPath = base.pathname + '/chat/completions';
         authHeader = `Bearer ${pCfg.apiKey}`;
       }
+      let modelId;
+      if (active === 'yandex') {
+        const baseModel = pCfg.model || 'yandexgpt/latest';
+        // Yandex OpenAI-compatible API requires full URI: gpt://<folderId>/<model>
+        modelId = pCfg.folderId ? `gpt://${pCfg.folderId}/${baseModel}` : baseModel;
+      } else {
+        modelId = pCfg.model || 'gpt-4o';
+      }
       const body = JSON.stringify({
-        model: pCfg.model || (active === 'yandex' ? 'yandexgpt/latest' : 'gpt-4o'),
+        model: modelId,
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 2000,
         temperature: 0.1,
