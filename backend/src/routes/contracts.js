@@ -225,7 +225,7 @@ router.post('/analyze-file', requireRole('admin', 'sales_manager', 'director'), 
 
     const fileInfo = {
       storedFileName: req.file.filename,
-      originalName: Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
+      originalName: req.file.originalname,
       mimetype: req.file.mimetype,
       size: req.file.size,
     };
@@ -456,7 +456,7 @@ router.post('/:id/files', requireRole('admin', 'sales_manager', 'director'), (re
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       contract.id,
-      Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
+      req.file.originalname,
       req.file.filename,
       req.file.mimetype,
       req.file.size,
