@@ -43,11 +43,34 @@ function addSeconds(timeStr, seconds) {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+// ─── Normalize Russian address abbreviations for Nominatim ───────────────────
+function normalizeAddress(address) {
+  if (!address) return address;
+  return address
+    .replace(/\bг\.\s*/gi, '')                  // "г. Москва" → "Москва"
+    .replace(/\bгород\s+/gi, '')                // "город Москва" → "Москва"
+    .replace(/\bул\.\s*/gi, 'улица ')           // "ул. Тверская" → "улица Тверская"
+    .replace(/\bпр-кт\.?\s*/gi, 'проспект ')   // "пр-кт Ленина" → "проспект Ленина"
+    .replace(/\bпр-т\.?\s*/gi, 'проспект ')    // "пр-т Мира" → "проспект Мира"
+    .replace(/\bпроезд\s+/gi, 'проезд ')
+    .replace(/\bпер\.\s*/gi, 'переулок ')      // "пер. Сивцев" → "переулок Сивцев"
+    .replace(/\bнаб\.\s*/gi, 'набережная ')    // "наб. Кутузова" → "набережная Кутузова"
+    .replace(/\bш\.\s*/gi, 'шоссе ')           // "ш. Рязанское" → "шоссе Рязанское"
+    .replace(/\bб-р\.?\s*/gi, 'бульвар ')      // "б-р Тверской" → "бульвар Тверской"
+    .replace(/\bпл\.\s*/gi, 'площадь ')        // "пл. Красная" → "площадь Красная"
+    .replace(/\bд\.\s*(?=\d)/gi, '')           // "д. 15" → "15"
+    .replace(/\bкорп?\.\s*(?=\d)/gi, 'корпус ') // "к. 2" → "корпус 2"
+    .replace(/\bстр\.\s*(?=\d)/gi, 'строение ') // "стр. 1" → "строение 1"
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // ─── Geocode single address via Nominatim ──────────────────────────────────
 async function geocodeAddress(address) {
   if (!address?.trim()) return null;
+  const normalized = normalizeAddress(address);
   try {
-    const url = `${NOMINATIM_BASE}/search?q=${encodeURIComponent(address)}&format=json&limit=1&addressdetails=1`;
+    const url = `${NOMINATIM_BASE}/search?q=${encodeURIComponent(normalized)}&format=json&limit=1&addressdetails=1&countrycodes=ru`;
     const res = await fetch(url, { headers: { 'Accept-Language': 'ru' } });
     const data = await res.json();
     if (data?.[0]) {
