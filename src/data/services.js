@@ -2,7 +2,7 @@ import {
   TrendingUp, Factory, Truck,
   CreditCard, BarChart3, Settings, AlertCircle,
   LayoutDashboard, FileText, ShoppingCart, MessageSquare,
-  ClipboardList, PackageCheck, Building2, Bot, BookOpen, Archive,
+  ClipboardList, PackageCheck, Building2, Bot, BookOpen, Archive, ClipboardCheck,
 } from 'lucide-react';
 
 export const ALL_NAV_ITEMS = [
@@ -17,6 +17,7 @@ export const ALL_NAV_ITEMS = [
   { label: 'Рекламации',         icon: AlertCircle,     path: '/claims' },
   { label: 'Отчёты',             icon: BarChart3,       path: '/reports' },
   { label: 'Чат',                icon: MessageSquare,   path: '/chat' },
+  { label: 'Путевые листы',      icon: ClipboardCheck,  path: '/waybills' },
   { label: 'Хранилище файлов',   icon: Archive,         path: '/files' },
   { label: 'ИИ-ассистент',       icon: Bot,             path: '/ai-assistant' },
   { label: 'Администрирование',  icon: Settings,        path: '/admin' },
@@ -72,7 +73,7 @@ export const SERVICES = [
     textColor: 'text-teal-700',
     borderColor: 'border-teal-200',
     description: 'Управление заказами, отгрузками и логистикой',
-    navPaths: ['/orders', '/shipments', '/ai-assistant'],
+    navPaths: ['/orders', '/shipments', '/waybills', '/ai-assistant'],
     defaultPath: '/orders',
   },
   {

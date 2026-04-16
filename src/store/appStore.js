@@ -60,6 +60,9 @@ const useAppStore = create((set, get) => ({
       let drivers = [];
       try { const res = await driversApi.list(); drivers = res.data; } catch (e) { console.warn('Failed to load drivers:', e.message); }
 
+      let deliveryRoutes = [];
+      try { const res = await deliveryRoutesApi.list(); deliveryRoutes = res.data; } catch (e) { console.warn('Failed to load delivery routes:', e.message); }
+
       set({
         contracts: contracts.data,
         orders: orders.data,
@@ -74,6 +77,7 @@ const useAppStore = create((set, get) => ({
         auditLog,
         chatMessages,
         drivers,
+        deliveryRoutes,
         isLoading: false,
       });
     } catch (err) {
