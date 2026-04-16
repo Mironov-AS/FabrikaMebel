@@ -26,12 +26,18 @@ function LayoutWrapper() {
   useEffect(() => {
     loadAll();
 
+    // Reload data when the tab becomes visible again, but throttle to at most
+    // once per 30 seconds to avoid hammering the API on every window switch.
+    let lastLoad = Date.now();
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') loadAll();
+      if (document.visibilityState === 'visible' && Date.now() - lastLoad > 30_000) {
+        lastLoad = Date.now();
+        loadAll();
+      }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
+  }, [loadAll]);
 
   return (
     <Layout>

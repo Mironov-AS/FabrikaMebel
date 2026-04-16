@@ -217,9 +217,12 @@ export default function AIAssistant() {
   const inputRef = useRef(null);
   const abortRef = useRef(null);
 
+  // Scroll to bottom when new messages arrive or streaming updates.
+  // Use 'auto' (instant) during streaming to avoid stacking dozens of smooth
+  // scroll animations (each chunk would queue one → browser freeze).
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [history, streamText]);
+    bottomRef.current?.scrollIntoView({ behavior: streaming ? 'auto' : 'smooth' });
+  }, [history, streamText, streaming]);
 
   const sendMessage = useCallback(async (text) => {
     const userMsg = text.trim();

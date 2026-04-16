@@ -9,13 +9,18 @@ export default function Layout({ children }) {
   );
 
   useEffect(() => {
+    let timer;
     function handleResize() {
-      if (window.innerWidth < 1024) {
-        setSidebarCollapsed(true);
-      }
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (window.innerWidth < 1024) setSidebarCollapsed(true);
+      }, 100);
     }
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(timer);
+    };
   }, []);
 
   return (

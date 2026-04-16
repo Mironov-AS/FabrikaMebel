@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Send, ChevronDown, MessageSquare } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 
@@ -41,14 +41,30 @@ export default function ChatPage() {
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const messagesEndRef = useRef(null);
 
-  const conversations = buildConversations(chatMessages);
+  // Memoize — only recompute when chatMessages reference changes
+  const conversations = useMemo(() => buildConversations(chatMessages), [chatMessages]);
 
-  // Auto-select first conversation
+  // Precompute per-conversation lookup maps in one pass (O(n) instead of O(n²))
+  const convMeta = useMemo(() => {
+    const map = {};
+    chatMessages.forEach((m) => {
+      const key = `${m.counterpartyId}_${m.contractId}`;
+      if (!map[key]) map[key] = { lastMsg: null, unread: 0 };
+      map[key].lastMsg = m; // messages are ordered, so last wins
+      if (!m.read && m.from === 'client') map[key].unread += 1;
+    });
+    return map;
+  }, [chatMessages]);
+
+  const lastMsg = (conv) => convMeta[`${conv.counterpartyId}_${conv.contractId}`]?.lastMsg ?? null;
+  const unreadCount = (conv) => convMeta[`${conv.counterpartyId}_${conv.contractId}`]?.unread ?? 0;
+
+  // Auto-select first conversation (depends on memoized conversations)
   useEffect(() => {
     if (!activeConv && conversations.length > 0) {
       setActiveConv(conversations[0]);
     }
-  }, []);
+  }, [conversations, activeConv]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -64,18 +80,6 @@ export default function ChatPage() {
         (m) => m.counterpartyId === activeConv.counterpartyId && m.contractId === activeConv.contractId,
       )
     : [];
-
-  const lastMsg = (conv) => {
-    const msgs = chatMessages.filter(
-      (m) => m.counterpartyId === conv.counterpartyId && m.contractId === conv.contractId,
-    );
-    return msgs[msgs.length - 1];
-  };
-
-  const unreadCount = (conv) =>
-    chatMessages.filter(
-      (m) => m.counterpartyId === conv.counterpartyId && m.contractId === conv.contractId && !m.read && m.from === 'client',
-    ).length;
 
   function handleSend() {
     if (!inputText.trim() || !activeConv) return;
