@@ -69,6 +69,14 @@ export const invoicesApi = {
   addPayment: (id, amount, paidDate, notes) => api.post(`/invoices/${id}/payments`, { amount, paidDate, notes }),
   deletePayment: (id, paymentId) => api.delete(`/invoices/${id}/payments/${paymentId}`),
   deactivate: (id) => api.patch(`/invoices/${id}/deactivate`),
+  importPayments: (file, onProgress) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/invoices/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: onProgress,
+    });
+  },
 };
 
 // Payments API

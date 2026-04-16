@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   CreditCard, AlertCircle, Clock, CheckCircle,
   ChevronDown, ChevronRight, Building2, FileText,
-  Plus, Trash2, Receipt, XCircle,
+  Plus, Trash2, Receipt, XCircle, Upload,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { formatMoney } from '../../data/mockData';
@@ -12,6 +12,7 @@ import StatCard from '../../components/ui/StatCard';
 import InvoiceBadge from './InvoiceBadge';
 import CreateInvoiceModal from './CreateInvoiceModal';
 import AddPaymentModal from './AddPaymentModal';
+import ImportPaymentsModal from './ImportPaymentsModal';
 import OrderRow from './OrderRow';
 
 export default function PaymentsPage() {
@@ -21,6 +22,7 @@ export default function PaymentsPage() {
   const [expandedOrders, setExpandedOrders] = useState(new Set());
   const [createInvoiceFor, setCreateInvoiceFor] = useState(null);
   const [addPaymentFor, setAddPaymentFor] = useState(null);
+  const [showImport, setShowImport] = useState(false);
 
   const { invoices, orders, contracts, counterparties, createInvoice, addInvoicePayment, deleteInvoicePayment, deactivateInvoice } = useAppStore();
 
@@ -99,9 +101,18 @@ export default function PaymentsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Финансы</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Счета на заказы и контроль оплаты</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Финансы</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Счета на заказы и контроль оплаты</p>
+        </div>
+        <button
+          onClick={() => setShowImport(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors flex-shrink-0"
+        >
+          <Upload size={15} />
+          Импорт от бухгалтера
+        </button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -495,6 +506,7 @@ export default function PaymentsPage() {
         invoice={addPaymentFor}
         onSave={addInvoicePayment}
       />
+      {showImport && <ImportPaymentsModal onClose={() => setShowImport(false)} />}
     </div>
   );
 }

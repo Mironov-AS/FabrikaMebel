@@ -1,10 +1,14 @@
 const express = require('express');
+const multer = require('multer');
+const XLSX = require('xlsx');
 const db = require('../db');
 const { authenticate, requireRole, logAudit } = require('../middleware/auth');
 const { sanitizeStr } = require('../middleware/validate');
 
 const router = express.Router();
 router.use(authenticate);
+
+const uploadMemory = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 async function buildInvoice(row) {
   if (!row) return null;
@@ -57,6 +61,149 @@ async function recalcInvoiceStatus(invoiceId) {
   await db.run('UPDATE invoices SET status = $1 WHERE id = $2', [status, invoiceId]);
   return status;
 }
+
+// POST /api/invoices/import — import paid invoices from accountant file (Excel/CSV)
+router.post('/import', requireRole('admin', 'accountant', 'director'), uploadMemory.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Файл не загружен' });
+
+    const { buffer, originalname, mimetype } = req.file;
+    const ext = (originalname || '').split('.').pop().toLowerCase();
+
+    // Parse workbook
+    let workbook;
+    if (ext === 'csv' || mimetype === 'text/csv' || mimetype === 'text/plain') {
+      workbook = XLSX.read(buffer, { type: 'buffer', codepage: 65001 });
+    } else {
+      workbook = XLSX.read(buffer, { type: 'buffer' });
+    }
+
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) return res.status(400).json({ error: 'Файл не содержит листов' });
+
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+    if (!rows.length) return res.status(400).json({ error: 'Файл пустой или не содержит данных' });
+
+    // Normalize column names: find invoice number, amount, date, notes columns
+    const firstRow = rows[0];
+    const keys = Object.keys(firstRow);
+
+    function findKey(candidates) {
+      return keys.find(k => candidates.some(c => k.toLowerCase().replace(/\s+/g, '').includes(c)));
+    }
+
+    const numKey = findKey(['номерсчёт', 'номерсчет', 'счёт', 'счет', 'invoice', '№счёт', '№счет', 'номер']);
+    const amtKey = findKey(['суммаоплат', 'суммапл', 'сумма', 'оплата', 'amount', 'payment']);
+    const dateKey = findKey(['датаоплат', 'датапл', 'дата', 'date', 'paid']);
+    const notesKey = findKey(['примечани', 'коммент', 'note', 'comment', 'описани']);
+
+    if (!numKey) return res.status(400).json({ error: 'Не найдена колонка с номером счёта. Ожидаются заголовки: "Номер счёта", "Счёт", "Invoice" и т.п.' });
+    if (!amtKey) return res.status(400).json({ error: 'Не найдена колонка с суммой оплаты. Ожидаются заголовки: "Сумма", "Сумма оплаты", "Amount" и т.п.' });
+    if (!dateKey) return res.status(400).json({ error: 'Не найдена колонка с датой оплаты. Ожидаются заголовки: "Дата", "Дата оплаты", "Date" и т.п.' });
+
+    const results = { processed: 0, skipped: 0, errors: [] };
+    const updatedInvoiceIds = new Set();
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2; // +2: 1 for header, 1 for 1-based
+
+      const invoiceNumber = String(row[numKey] || '').trim();
+      if (!invoiceNumber) continue; // skip empty rows
+
+      const rawAmount = String(row[amtKey] || '').replace(/[^\d.,]/g, '').replace(',', '.');
+      const amount = parseFloat(rawAmount);
+      if (!amount || amount <= 0) {
+        results.errors.push({ row: rowNum, invoiceNumber, error: 'Некорректная сумма оплаты' });
+        results.skipped++;
+        continue;
+      }
+
+      // Parse date: Excel serial number or string
+      let paidDate;
+      const rawDate = row[dateKey];
+      if (typeof rawDate === 'number') {
+        // Excel serial date
+        const d = XLSX.SSF.parse_date_code(rawDate);
+        paidDate = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+      } else {
+        const ds = String(rawDate || '').trim();
+        // Try common Russian date formats: DD.MM.YYYY, YYYY-MM-DD
+        const matchDMY = ds.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/);
+        const matchYMD = ds.match(/^(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})$/);
+        if (matchDMY) {
+          paidDate = `${matchDMY[3]}-${matchDMY[2].padStart(2, '0')}-${matchDMY[1].padStart(2, '0')}`;
+        } else if (matchYMD) {
+          paidDate = `${matchYMD[1]}-${matchYMD[2].padStart(2, '0')}-${matchYMD[3].padStart(2, '0')}`;
+        } else if (ds) {
+          const parsed = new Date(ds);
+          if (!isNaN(parsed)) {
+            paidDate = parsed.toISOString().slice(0, 10);
+          }
+        }
+      }
+
+      if (!paidDate) {
+        results.errors.push({ row: rowNum, invoiceNumber, error: 'Некорректная дата оплаты' });
+        results.skipped++;
+        continue;
+      }
+
+      const notes = notesKey ? sanitizeStr(String(row[notesKey] || '').trim()) : null;
+
+      // Find invoice by number (active ones)
+      const inv = await db.get(
+        "SELECT * FROM invoices WHERE invoice_number = $1 AND is_active = 1",
+        [invoiceNumber]
+      );
+
+      if (!inv) {
+        results.errors.push({ row: rowNum, invoiceNumber, error: 'Счёт не найден в системе' });
+        results.skipped++;
+        continue;
+      }
+
+      if (inv.status === 'paid') {
+        results.errors.push({ row: rowNum, invoiceNumber, error: 'Счёт уже полностью оплачен' });
+        results.skipped++;
+        continue;
+      }
+
+      const remaining = inv.amount - inv.paid_amount;
+      const payAmount = Math.min(amount, remaining); // cap at remaining balance
+
+      await db.run(
+        `INSERT INTO payments (invoice_id, counterparty_id, amount, paid_date, status, invoice_number)
+         VALUES ($1, $2, $3, $4, 'paid', $5)`,
+        [inv.id, inv.counterparty_id || null, payAmount, paidDate, notes || 'Импорт от бухгалтера']
+      );
+
+      const newPaidAmount = inv.paid_amount + payAmount;
+      await db.run('UPDATE invoices SET paid_amount = $1 WHERE id = $2', [newPaidAmount, inv.id]);
+      const newStatus = await recalcInvoiceStatus(inv.id);
+
+      if (newStatus === 'paid' && inv.order_id) {
+        await db.run("UPDATE orders SET status = 'completed' WHERE id = $1 AND status NOT IN ('completed')", [inv.order_id]);
+      }
+
+      updatedInvoiceIds.add(inv.id);
+      results.processed++;
+    }
+
+    logAudit(
+      req.user.id, req.user.name,
+      `Импорт оплат из файла: обработано ${results.processed}, пропущено ${results.skipped}`,
+      'Финансы', null, req.ip
+    );
+
+    res.json({ ...results, totalRows: rows.length, updatedInvoiceIds: [...updatedInvoiceIds] });
+  } catch (err) {
+    console.error('Import error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // GET /api/invoices
 router.get('/', async (req, res) => {

@@ -199,6 +199,15 @@ const useAppStore = create(persist((set, get) => ({
     set(s => ({ invoices: s.invoices.map(inv => inv.id === id ? data : inv) }));
     return data;
   },
+  importPayments: async (file, onProgress) => {
+    const { data } = await invoicesApi.importPayments(file, onProgress);
+    // Reload invoices and orders after bulk import
+    const [invoicesRes, ordersRes, paymentsRes] = await Promise.all([
+      invoicesApi.list(), ordersApi.list(), paymentsApi.list(),
+    ]);
+    set({ invoices: invoicesRes.data, orders: ordersRes.data, payments: paymentsRes.data });
+    return data;
+  },
 
   // ─── Payments ────────────────────────────────────────────
 
