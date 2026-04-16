@@ -4,7 +4,7 @@ import { Plus, Filter, Trash2 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { formatMoney } from '../../data/mockData';
 import { STATUS_LABELS } from '../../constants/statuses';
-import { WAREHOUSE_SERVICE_ID } from '../../constants/services';
+import { WAREHOUSE_SERVICE_ID, SALES_SERVICE_ID } from '../../constants/services';
 import StatusBadge from '../../components/ui/StatusBadge';
 import PriorityBadge, { PRIORITY_MAP } from '../../components/ui/PriorityBadge';
 import Modal from '../../components/ui/Modal';
@@ -267,6 +267,7 @@ export default function OrdersList() {
   const navigate = useNavigate();
 
   const isWarehouse = currentService === WAREHOUSE_SERVICE_ID;
+  const isSales = currentService === SALES_SERVICE_ID;
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -344,7 +345,7 @@ export default function OrdersList() {
             <p className="text-sm text-gray-500 mt-0.5">Готовые к отгрузке заказы</p>
           )}
         </div>
-        {!isWarehouse && (
+        {isSales && (
           <button
             className="btn-primary flex items-center gap-1.5 self-start sm:self-auto"
             onClick={() => setNewOpen(true)}
@@ -411,7 +412,7 @@ export default function OrdersList() {
       />
 
       {/* Modal */}
-      {!isWarehouse && <NewOrderModal isOpen={newOpen} onClose={() => setNewOpen(false)} />}
+      {isSales && <NewOrderModal isOpen={newOpen} onClose={() => setNewOpen(false)} />}
     </div>
   );
 }
