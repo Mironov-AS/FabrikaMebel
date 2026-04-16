@@ -1,20 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  FileText, Plus, Pencil, Trash2, Truck, User, Car, Search,
-  MapPin, Phone, ChevronDown, X, Printer, Calendar,
+  FileText, Plus, Pencil, Search,
+  MapPin, Phone, ChevronDown, X, Printer, Calendar, User,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import Modal from '../../components/ui/Modal';
-
-// ─── LocalStorage helpers for vehicles ──────────────────────────────────────
-const VEHICLES_KEY = 'waybills_vehicles';
-
-function loadVehicles() {
-  try { return JSON.parse(localStorage.getItem(VEHICLES_KEY)) || []; } catch { return []; }
-}
-function saveVehicles(list) {
-  localStorage.setItem(VEHICLES_KEY, JSON.stringify(list));
-}
 
 // ─── Status badge ──────────────────────────────────────────────────────────
 const STATUS_MAP = {
@@ -29,6 +19,13 @@ const STATUS_MAP = {
 function RouteStatusBadge({ status }) {
   const s = STATUS_MAP[status] || { label: status || 'Неизвестно', cls: 'bg-gray-100 text-gray-600' };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${s.cls}`}>{s.label}</span>;
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+function vehicleDisplay(driver) {
+  if (!driver) return '—';
+  const parts = [driver.vehicle_brand, driver.vehicle_model, driver.vehicle].filter(Boolean);
+  return parts.join(' ') || '—';
 }
 
 // ─── WaybillDetailModal ───────────────────────────────────────────────────
@@ -53,13 +50,20 @@ function WaybillDetailModal({ route, onClose }) {
 
         <div className="p-4 bg-gray-50 rounded-lg border space-y-2">
           <h3 className="font-semibold text-gray-800 flex items-center gap-2 mb-2">
-            <Car size={15} /> Водитель и транспорт
+            <User size={15} /> Водитель и транспорт
           </h3>
           <div className="grid grid-cols-2 gap-2 text-sm">
             <div><span className="text-gray-500">ФИО:</span> <span className="font-medium">{route.driver?.name || '—'}</span></div>
             <div><span className="text-gray-500">Телефон:</span> <span className="font-medium">{route.driver?.phone || '—'}</span></div>
-            {route.driver?.vehicle && (
-              <div className="col-span-2"><span className="text-gray-500">Автомобиль:</span> <span className="font-medium">{route.driver.vehicle}</span></div>
+            {route.driver?.license && (
+              <div><span className="text-gray-500">Номер ВУ:</span> <span className="font-medium">{route.driver.license}</span></div>
+            )}
+            {vehicleDisplay(route.driver) !== '—' && (
+              <div className="col-span-2">
+                <span className="text-gray-500">Автомобиль:</span>{' '}
+                <span className="font-medium">{vehicleDisplay(route.driver)}</span>
+                {route.driver?.vehicle_year && <span className="text-gray-400 ml-1">({route.driver.vehicle_year} г.)</span>}
+              </div>
             )}
           </div>
         </div>
@@ -113,13 +117,18 @@ function WaybillDetailModal({ route, onClose }) {
 
 // ─── DriverModal ──────────────────────────────────────────────────────────
 function DriverModal({ driver, onSave, onClose }) {
-  const [form, setForm] = useState(driver ? { ...driver } : { name: '', phone: '', vehicle: '', license: '' });
+  const [form, setForm] = useState(driver ? { ...driver } : {
+    name: '', phone: '', license: '',
+    vehicle: '', vehicle_brand: '', vehicle_model: '', vehicle_year: '', vehicle_notes: '',
+  });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.name.trim()) return;
     onSave(form);
   };
+
+  const set = (key) => (e) => setForm(p => ({ ...p, [key]: e.target.value }));
 
   return (
     <Modal isOpen onClose={onClose} title={driver ? 'Редактировать водителя' : 'Добавить водителя'}
@@ -131,68 +140,44 @@ function DriverModal({ driver, onSave, onClose }) {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Водитель</p>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">ФИО *</label>
-          <input className="input w-full" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Иванов Иван Иванович" required />
+          <input className="input w-full" value={form.name} onChange={set('name')} placeholder="Иванов Иван Иванович" required />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Телефон</label>
-          <input className="input w-full" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="+7 900 000 00 00" />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Телефон</label>
+            <input className="input w-full" value={form.phone} onChange={set('phone')} placeholder="+7 900 000 00 00" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Номер ВУ</label>
+            <input className="input w-full" value={form.license} onChange={set('license')} placeholder="77 00 000000" />
+          </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Автомобиль / номер</label>
-          <input className="input w-full" value={form.vehicle} onChange={e => setForm(p => ({ ...p, vehicle: e.target.value }))} placeholder="Газель А123ВГ 77" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Номер ВУ</label>
-          <input className="input w-full" value={form.license} onChange={e => setForm(p => ({ ...p, license: e.target.value }))} placeholder="77 00 000000" />
-        </div>
-      </form>
-    </Modal>
-  );
-}
 
-// ─── VehicleModal ─────────────────────────────────────────────────────────
-function VehicleModal({ vehicle, onSave, onClose }) {
-  const [form, setForm] = useState(vehicle ? { ...vehicle } : { number: '', brand: '', model: '', year: '', notes: '' });
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!form.number.trim()) return;
-    onSave(form);
-  };
-
-  return (
-    <Modal isOpen onClose={onClose} title={vehicle ? 'Редактировать машину' : 'Добавить машину'}
-      footer={
-        <>
-          <button className="btn-secondary" onClick={onClose}>Отмена</button>
-          <button className="btn-primary" onClick={handleSubmit}>Сохранить</button>
-        </>
-      }
-    >
-      <form onSubmit={handleSubmit} className="space-y-4">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide pt-2">Транспортное средство</p>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Гос. номер *</label>
-          <input className="input w-full" value={form.number} onChange={e => setForm(p => ({ ...p, number: e.target.value }))} placeholder="А123ВГ 77" required />
+          <label className="block text-sm font-medium text-gray-700 mb-1">Гос. номер</label>
+          <input className="input w-full" value={form.vehicle} onChange={set('vehicle')} placeholder="А123ВГ 77" />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Марка</label>
-            <input className="input w-full" value={form.brand} onChange={e => setForm(p => ({ ...p, brand: e.target.value }))} placeholder="ГАЗ" />
+            <input className="input w-full" value={form.vehicle_brand} onChange={set('vehicle_brand')} placeholder="ГАЗ" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Модель</label>
-            <input className="input w-full" value={form.model} onChange={e => setForm(p => ({ ...p, model: e.target.value }))} placeholder="Газель Next" />
+            <input className="input w-full" value={form.vehicle_model} onChange={set('vehicle_model')} placeholder="Газель Next" />
           </div>
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Год выпуска</label>
-          <input className="input w-full" value={form.year} onChange={e => setForm(p => ({ ...p, year: e.target.value }))} placeholder="2020" />
+          <input className="input w-full" value={form.vehicle_year} onChange={set('vehicle_year')} placeholder="2020" />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Примечания</label>
-          <textarea className="input w-full" rows={2} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="Доп. информация..." />
+          <label className="block text-sm font-medium text-gray-700 mb-1">Примечания к машине</label>
+          <textarea className="input w-full" rows={2} value={form.vehicle_notes} onChange={set('vehicle_notes')} placeholder="Доп. информация..." />
         </div>
       </form>
     </Modal>
@@ -205,8 +190,7 @@ export default function WaybillsPage() {
   const deliveryRoutes = useAppStore(s => s.deliveryRoutes) || [];
   const { addDriver, updateDriver, loadDeliveryRoutes } = useAppStore();
 
-  const [tab, setTab] = useState('waybills'); // 'waybills' | 'drivers' | 'vehicles'
-  const [vehicles, setVehicles] = useState(loadVehicles);
+  const [tab, setTab] = useState('waybills'); // 'waybills' | 'drivers'
 
   // Filters
   const [filterDriver, setFilterDriver] = useState('');
@@ -218,8 +202,6 @@ export default function WaybillsPage() {
   // Modals
   const [detailRoute, setDetailRoute] = useState(null);
   const [driverModal, setDriverModal] = useState(null); // null | 'new' | driver object
-  const [vehicleModal, setVehicleModal] = useState(null);
-  const [confirmDelete, setConfirmDelete] = useState(null); // { type, id }
 
   useEffect(() => {
     loadDeliveryRoutes().catch(() => {});
@@ -236,14 +218,14 @@ export default function WaybillsPage() {
   const filteredRoutes = useMemo(() => {
     let list = enrichedRoutes;
     if (filterDriver) list = list.filter(r => String(r.driverId) === filterDriver || r.driver?.name === filterDriver);
-    if (filterVehicle) list = list.filter(r => r.driver?.vehicle?.toLowerCase().includes(filterVehicle.toLowerCase()));
+    if (filterVehicle) list = list.filter(r => vehicleDisplay(r.driver).toLowerCase().includes(filterVehicle.toLowerCase()));
     if (filterDateFrom) list = list.filter(r => r.routeDate >= filterDateFrom);
     if (filterDateTo) list = list.filter(r => r.routeDate <= filterDateTo);
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(r =>
         r.driver?.name?.toLowerCase().includes(q) ||
-        r.driver?.vehicle?.toLowerCase().includes(q) ||
+        vehicleDisplay(r.driver).toLowerCase().includes(q) ||
         r.routeDate?.includes(q) ||
         (r.shipments || []).some(s => s.counterpartyName?.toLowerCase().includes(q))
       );
@@ -265,26 +247,6 @@ export default function WaybillsPage() {
     setDriverModal(null);
   };
 
-  // ── Vehicle handlers ─────────────────────────────────────────────────────
-  const handleSaveVehicle = (form) => {
-    let updated;
-    if (vehicleModal && vehicleModal !== 'new') {
-      updated = vehicles.map(v => v.id === vehicleModal.id ? { ...vehicleModal, ...form } : v);
-    } else {
-      updated = [...vehicles, { id: Date.now(), ...form }];
-    }
-    setVehicles(updated);
-    saveVehicles(updated);
-    setVehicleModal(null);
-  };
-
-  const handleDeleteVehicle = (id) => {
-    const updated = vehicles.filter(v => v.id !== id);
-    setVehicles(updated);
-    saveVehicles(updated);
-    setConfirmDelete(null);
-  };
-
   const clearFilters = () => {
     setFilterDriver('');
     setFilterVehicle('');
@@ -295,10 +257,17 @@ export default function WaybillsPage() {
 
   const hasFilters = filterDriver || filterVehicle || filterDateFrom || filterDateTo || search;
 
+  // Vehicle options for filter (from driver records)
+  const vehicleOptions = useMemo(() => {
+    const seen = new Set();
+    return drivers
+      .map(d => ({ key: d.vehicle, label: vehicleDisplay(d) }))
+      .filter(({ key, label }) => key && label !== '—' && !seen.has(key) && seen.add(key));
+  }, [drivers]);
+
   const tabs = [
     { key: 'waybills', label: 'Путевые листы', icon: FileText },
-    { key: 'drivers', label: 'Водители', icon: User },
-    { key: 'vehicles', label: 'Машины', icon: Truck },
+    { key: 'drivers', label: 'Водители',       icon: User },
   ];
 
   return (
@@ -306,7 +275,7 @@ export default function WaybillsPage() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-gray-900">Путевые листы</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Реестр путевых листов, справочники водителей и машин</p>
+        <p className="text-sm text-gray-500 mt-0.5">Реестр путевых листов и справочник водителей</p>
       </div>
 
       {/* Tabs */}
@@ -361,14 +330,9 @@ export default function WaybillsPage() {
                   onChange={e => setFilterVehicle(e.target.value)}
                 >
                   <option value="">Все машины</option>
-                  {vehicles.map(v => (
-                    <option key={v.id} value={v.number}>{v.number}{v.brand ? ` — ${v.brand} ${v.model || ''}`.trim() : ''}</option>
+                  {vehicleOptions.map(({ key, label }) => (
+                    <option key={key} value={key}>{label}</option>
                   ))}
-                  {/* Also show vehicles from driver records */}
-                  {[...new Set(drivers.filter(d => d.vehicle).map(d => d.vehicle))]
-                    .filter(veh => !vehicles.some(v => v.number === veh))
-                    .map(veh => <option key={veh} value={veh}>{veh}</option>)
-                  }
                 </select>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               </div>
@@ -431,7 +395,7 @@ export default function WaybillsPage() {
                           {r.driver?.phone && <div className="text-xs text-gray-500">{r.driver.phone}</div>}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-gray-700">
-                          {r.driver?.vehicle || '—'}
+                          {vehicleDisplay(r.driver)}
                         </td>
                         <td className="px-4 py-3 max-w-xs">
                           {(r.shipments || []).length === 0 ? (
@@ -485,7 +449,7 @@ export default function WaybillsPage() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    {['ФИО', 'Телефон', 'Автомобиль', 'Номер ВУ', 'Действия'].map(h => (
+                    {['ФИО', 'Телефон', 'Номер ВУ', 'Гос. номер', 'Автомобиль', 'Год', 'Действия'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
@@ -493,7 +457,7 @@ export default function WaybillsPage() {
                 <tbody className="divide-y divide-gray-100">
                   {drivers.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-10 text-center">
+                      <td colSpan={7} className="px-4 py-10 text-center">
                         <User size={28} className="mx-auto mb-2 text-gray-300" />
                         <p className="text-sm text-gray-400">Водители не добавлены</p>
                       </td>
@@ -503,8 +467,12 @@ export default function WaybillsPage() {
                       <tr key={d.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3 font-medium text-gray-900">{d.name}</td>
                         <td className="px-4 py-3 text-gray-600">{d.phone || '—'}</td>
-                        <td className="px-4 py-3 text-gray-600">{d.vehicle || '—'}</td>
                         <td className="px-4 py-3 text-gray-600">{d.license || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600">{d.vehicle || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {[d.vehicle_brand, d.vehicle_model].filter(Boolean).join(' ') || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">{d.vehicle_year || '—'}</td>
                         <td className="px-4 py-3">
                           <button
                             className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
@@ -512,67 +480,6 @@ export default function WaybillsPage() {
                           >
                             <Pencil size={12} /> Редактировать
                           </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* ── Vehicles tab ─────────────────────────────────────────────────── */}
-      {tab === 'vehicles' && (
-        <>
-          <div className="flex justify-end">
-            <button className="btn-primary flex items-center gap-2" onClick={() => setVehicleModal('new')}>
-              <Plus size={15} /> Добавить машину
-            </button>
-          </div>
-
-          <div className="card p-0 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    {['Гос. номер', 'Марка', 'Модель', 'Год', 'Примечания', 'Действия'].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {vehicles.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center">
-                        <Truck size={28} className="mx-auto mb-2 text-gray-300" />
-                        <p className="text-sm text-gray-400">Машины не добавлены</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    vehicles.map(v => (
-                      <tr key={v.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-gray-900">{v.number}</td>
-                        <td className="px-4 py-3 text-gray-600">{v.brand || '—'}</td>
-                        <td className="px-4 py-3 text-gray-600">{v.model || '—'}</td>
-                        <td className="px-4 py-3 text-gray-600">{v.year || '—'}</td>
-                        <td className="px-4 py-3 text-gray-500 max-w-xs truncate">{v.notes || '—'}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
-                            <button
-                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
-                              onClick={() => setVehicleModal(v)}
-                            >
-                              <Pencil size={12} /> Изм.
-                            </button>
-                            <button
-                              className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors"
-                              onClick={() => setConfirmDelete({ type: 'vehicle', id: v.id })}
-                            >
-                              <Trash2 size={12} /> Удалить
-                            </button>
-                          </div>
                         </td>
                       </tr>
                     ))
@@ -593,34 +500,6 @@ export default function WaybillsPage() {
           onSave={handleSaveDriver}
           onClose={() => setDriverModal(null)}
         />
-      )}
-
-      {vehicleModal && (
-        <VehicleModal
-          vehicle={vehicleModal === 'new' ? null : vehicleModal}
-          onSave={handleSaveVehicle}
-          onClose={() => setVehicleModal(null)}
-        />
-      )}
-
-      {confirmDelete && (
-        <Modal isOpen onClose={() => setConfirmDelete(null)} title="Подтверждение удаления"
-          footer={
-            <>
-              <button className="btn-secondary" onClick={() => setConfirmDelete(null)}>Отмена</button>
-              <button
-                className="btn-primary bg-red-600 hover:bg-red-700"
-                onClick={() => {
-                  if (confirmDelete.type === 'vehicle') handleDeleteVehicle(confirmDelete.id);
-                }}
-              >
-                Удалить
-              </button>
-            </>
-          }
-        >
-          <p className="text-sm text-gray-600">Вы уверены, что хотите удалить эту запись? Это действие нельзя отменить.</p>
-        </Modal>
       )}
     </div>
   );

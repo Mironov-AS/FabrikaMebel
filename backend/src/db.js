@@ -358,6 +358,14 @@ db.exec(`
   );
 `);
 
+// Add vehicle/license columns to drivers if missing
+const driverCols = db.pragma('table_info(drivers)').map(c => c.name);
+if (!driverCols.includes('license'))       db.exec("ALTER TABLE drivers ADD COLUMN license TEXT");
+if (!driverCols.includes('vehicle_brand')) db.exec("ALTER TABLE drivers ADD COLUMN vehicle_brand TEXT");
+if (!driverCols.includes('vehicle_model')) db.exec("ALTER TABLE drivers ADD COLUMN vehicle_model TEXT");
+if (!driverCols.includes('vehicle_year'))  db.exec("ALTER TABLE drivers ADD COLUMN vehicle_year TEXT");
+if (!driverCols.includes('vehicle_notes')) db.exec("ALTER TABLE drivers ADD COLUMN vehicle_notes TEXT");
+
 // Add account-lockout columns if missing (SQLite does not support IF NOT EXISTS for ALTER)
 const existingCols = db.pragma('table_info(users)').map(c => c.name);
 if (!existingCols.includes('failed_attempts')) {
