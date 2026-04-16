@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  RefreshCw, AlertCircle, CheckCircle, Zap, Sliders, Eye, EyeOff,
+  RefreshCw, AlertCircle, CheckCircle, Zap, Sliders, Eye, EyeOff, Plus, X,
 } from 'lucide-react';
 import api from '../../../services/api';
 import Modal from '../../../components/ui/Modal';
@@ -43,6 +43,14 @@ const LLM_PROVIDERS = [
   },
 ];
 
+function getModelDisplayName(model, providerId) {
+  if (providerId === 'yandex' && model?.startsWith('gpt://')) {
+    const parts = model.slice(6).split('/');
+    return parts.slice(1).join('/');
+  }
+  return model || '';
+}
+
 export default function LLMTab() {
   const [llmConfig, setLlmConfig] = useState(null);
   const [llmLoading, setLlmLoading] = useState(false);
@@ -84,15 +92,51 @@ export default function LLMTab() {
 
   function openLlmModal(provider) {
     const pCfg = llmConfig?.providers?.[provider.id] || {};
+    let initCustomModels = pCfg.customModels || [];
+    let initModel = pCfg.model || '';
+
+    if (provider.id === 'yandex') {
+      // Auto-populate list from existing folderId + model if list is empty
+      if (initCustomModels.length === 0 && pCfg.folderId && initModel && !initModel.startsWith('gpt://')) {
+        initCustomModels = [`gpt://${pCfg.folderId}/${initModel}`];
+      }
+      // Upgrade model to full URI if we have folderId
+      if (initModel && pCfg.folderId && !initModel.startsWith('gpt://')) {
+        initModel = `gpt://${pCfg.folderId}/${initModel}`;
+      }
+      if (!initModel && initCustomModels.length > 0) {
+        initModel = initCustomModels[0];
+      }
+    } else {
+      initModel = initModel || provider.models[0];
+    }
+
     setLlmModalFields({
-      model: pCfg.model || provider.models[0],
+      model: initModel,
       temperature: pCfg.temperature ?? 0.7,
       maxTokens: pCfg.maxTokens ?? 4000,
       apiKey: '',
       folderId: pCfg.folderId || '',
       baseUrl: pCfg.baseUrl || '',
+      customModels: initCustomModels,
+      newModelUri: '',
     });
     setLlmModalProvider(provider);
+  }
+
+  function addCustomModel() {
+    const uri = (llmModalFields.newModelUri || '').trim();
+    if (!uri.startsWith('gpt://') || uri.split('/').length < 4) return;
+    if ((llmModalFields.customModels || []).includes(uri)) {
+      setLlmModalFields(f => ({ ...f, newModelUri: '' }));
+      return;
+    }
+    setLlmModalFields(f => ({
+      ...f,
+      customModels: [...(f.customModels || []), uri],
+      model: f.model || uri,
+      newModelUri: '',
+    }));
   }
 
   async function handleSaveLlmModal() {
@@ -105,6 +149,7 @@ export default function LLMTab() {
     };
     if (llmModalFields.apiKey) patch.apiKey = llmModalFields.apiKey;
     if (llmModalProvider.id === 'yandex' && llmModalFields.folderId) patch.folderId = llmModalFields.folderId;
+    if (llmModalProvider.id === 'yandex') patch.customModels = llmModalFields.customModels || [];
     if (llmModalProvider.id === 'openai') patch.baseUrl = llmModalFields.baseUrl || '';
 
     try {
@@ -190,7 +235,7 @@ export default function LLMTab() {
                         {p.name}
                       </p>
                       <p className="text-xs text-gray-400 truncate mt-0.5">
-                        {pCfg.apiKeySet ? (pCfg.model || p.models[0]) : 'Не настроен'}
+                        {pCfg.apiKeySet ? (getModelDisplayName(pCfg.model, p.id) || p.models[0]) : 'Не настроен'}
                       </p>
                     </div>
                     {isActive && <CheckCircle size={16} className="text-blue-500 flex-shrink-0" />}
@@ -234,7 +279,7 @@ export default function LLMTab() {
                     <div className="flex justify-between">
                       <span className="text-gray-500">Модель</span>
                       <span className="text-gray-700 font-mono text-xs truncate max-w-[140px]" title={pCfg.model}>
-                        {pCfg.model || p.models[0]}
+                        {getModelDisplayName(pCfg.model, p.id) || p.models[0]}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -350,34 +395,97 @@ export default function LLMTab() {
               </div>
             ))}
 
-            <div>
-              <label className="form-label">Модель</label>
-              <select
-                className="form-input"
-                value={llmModalProvider.models.includes(llmModalFields.model) ? llmModalFields.model : '__custom__'}
-                onChange={(e) => {
-                  if (e.target.value === '__custom__') {
-                    setLlmModalFields((f) => ({ ...f, model: '' }));
-                  } else {
-                    setLlmModalFields((f) => ({ ...f, model: e.target.value }));
-                  }
-                }}
-              >
-                {llmModalProvider.models.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-                <option value="__custom__">Своя модель...</option>
-              </select>
-              {!llmModalProvider.models.includes(llmModalFields.model) && (
-                <input
-                  type="text"
-                  className="form-input mt-2"
-                  placeholder="Например: aliceai-llm/latest"
-                  value={llmModalFields.model}
-                  onChange={(e) => setLlmModalFields((f) => ({ ...f, model: e.target.value }))}
-                />
-              )}
-            </div>
+            {llmModalProvider.id === 'yandex' ? (
+              <div>
+                <label className="form-label">Модели Яндекс</label>
+                <div className="space-y-2 mb-3">
+                  {(llmModalFields.customModels || []).length === 0 ? (
+                    <p className="text-sm text-gray-400 py-1">Нет добавленных моделей. Введите путь ниже.</p>
+                  ) : (
+                    (llmModalFields.customModels || []).map((uri) => (
+                      <div
+                        key={uri}
+                        className={`flex items-center gap-2 p-2.5 border rounded-xl cursor-pointer transition-colors ${
+                          llmModalFields.model === uri
+                            ? 'border-blue-400 bg-blue-50'
+                            : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+                        }`}
+                        onClick={() => setLlmModalFields(f => ({ ...f, model: uri }))}
+                      >
+                        <input
+                          type="radio"
+                          name="activeYandexModel"
+                          checked={llmModalFields.model === uri}
+                          onChange={() => setLlmModalFields(f => ({ ...f, model: uri }))}
+                          className="accent-blue-500 flex-shrink-0"
+                        />
+                        <span className="flex-1 font-mono text-xs text-gray-700 truncate" title={uri}>{uri}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLlmModalFields(f => {
+                              const next = f.customModels.filter(m => m !== uri);
+                              return { ...f, customModels: next, model: f.model === uri ? (next[0] || '') : f.model };
+                            });
+                          }}
+                          className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0 p-0.5"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    className="form-input flex-1 font-mono text-sm"
+                    placeholder="gpt://folder-id/yandexgpt/latest"
+                    value={llmModalFields.newModelUri || ''}
+                    onChange={(e) => setLlmModalFields(f => ({ ...f, newModelUri: e.target.value }))}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomModel(); } }}
+                  />
+                  <button
+                    type="button"
+                    className="btn-secondary px-3 flex items-center gap-1.5 text-sm whitespace-nowrap"
+                    onClick={addCustomModel}
+                  >
+                    <Plus size={14} /> Добавить
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1.5">Формат: <span className="font-mono">gpt://folder-id/model-name/version</span></p>
+              </div>
+            ) : (
+              <div>
+                <label className="form-label">Модель</label>
+                <select
+                  className="form-input"
+                  value={llmModalProvider.models.includes(llmModalFields.model) ? llmModalFields.model : '__custom__'}
+                  onChange={(e) => {
+                    if (e.target.value === '__custom__') {
+                      setLlmModalFields((f) => ({ ...f, model: '' }));
+                    } else {
+                      setLlmModalFields((f) => ({ ...f, model: e.target.value }));
+                    }
+                  }}
+                >
+                  {llmModalProvider.models.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                  <option value="__custom__">Своя модель...</option>
+                </select>
+                {!llmModalProvider.models.includes(llmModalFields.model) && (
+                  <input
+                    type="text"
+                    className="form-input mt-2"
+                    placeholder="Например: aliceai-llm/latest"
+                    value={llmModalFields.model}
+                    onChange={(e) => setLlmModalFields((f) => ({ ...f, model: e.target.value }))}
+                  />
+                )}
+              </div>
+            )}
 
             <div>
               <label className="form-label flex items-center justify-between">

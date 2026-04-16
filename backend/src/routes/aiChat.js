@@ -263,22 +263,31 @@ function pipeYandexOpenAIStream(httpRes, res) {
 }
 
 async function handleYandex(res, pCfg, systemPrompt, history, message) {
-  if (!pCfg.apiKey || !pCfg.folderId) {
-    res.write(`data: ${JSON.stringify({ error: 'YANDEX_API_KEY или YANDEX_FOLDER_ID не заданы' })}\n\n`);
+  if (!pCfg.apiKey) {
+    res.write(`data: ${JSON.stringify({ error: 'YANDEX_API_KEY не задан' })}\n\n`);
     return res.end();
   }
 
-  // Parse folderId — user may have accidentally entered a full gpt:// URI
-  let folderId = pCfg.folderId;
-  let modelPath = pCfg.model || 'yandexgpt/latest';
-  if (folderId.startsWith('gpt://')) {
-    const parts = folderId.slice(6).split('/');
-    folderId = parts[0];
-    // Only use URI's model path if no model is explicitly configured
-    if (!pCfg.model && parts.length > 1) modelPath = parts.slice(1).join('/');
-  }
+  let folderId = pCfg.folderId || '';
+  let modelUri;
 
-  const modelUri = `gpt://${folderId}/${modelPath}`;
+  // Model can be stored as a full gpt:// URI (new format from custom model management)
+  if (pCfg.model && pCfg.model.startsWith('gpt://')) {
+    modelUri = pCfg.model;
+    folderId = pCfg.model.slice(6).split('/')[0];
+  } else {
+    // Legacy: parse folderId — user may have accidentally entered a full gpt:// URI
+    if (folderId.startsWith('gpt://')) {
+      const parts = folderId.slice(6).split('/');
+      folderId = parts[0];
+    }
+    if (!folderId) {
+      res.write(`data: ${JSON.stringify({ error: 'YANDEX_FOLDER_ID не задан' })}\n\n`);
+      return res.end();
+    }
+    const modelPath = pCfg.model || 'yandexgpt/latest';
+    modelUri = `gpt://${folderId}/${modelPath}`;
+  }
   const messages = buildYandexMessages(systemPrompt, history, message);
   const httpRes = await yandexStream(
     pCfg.apiKey, folderId, modelUri, messages,

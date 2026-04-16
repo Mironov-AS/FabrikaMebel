@@ -19,6 +19,7 @@ function getDefaultConfig() {
         apiKey: process.env.YANDEX_API_KEY || '',
         folderId: process.env.YANDEX_FOLDER_ID || '',
         model: 'yandexgpt/latest',
+        customModels: [],
         temperature: 0.6,
         maxTokens: 4000,
       },
