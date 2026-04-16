@@ -6,9 +6,9 @@ const { sanitizeStr } = require('../middleware/validate');
 const router = express.Router();
 router.use(authenticate);
 
-function buildShipment(row) {
+async function buildShipment(row) {
   if (!row) return null;
-  const items = db.prepare('SELECT * FROM shipment_items WHERE shipment_id = ?').all(row.id);
+  const items = await db.all('SELECT * FROM shipment_items WHERE shipment_id = $1', [row.id]);
   return {
     id: row.id,
     orderId: row.order_id,
@@ -29,146 +29,162 @@ function buildShipment(row) {
 }
 
 // GET /api/shipments
-router.get('/', (req, res) => {
-  const rows = db.prepare('SELECT * FROM shipments ORDER BY date DESC').all();
-  res.json(rows.map(buildShipment));
+router.get('/', async (req, res) => {
+  try {
+    const rows = await db.all('SELECT * FROM shipments ORDER BY date DESC');
+    const shipments = await Promise.all(rows.map(buildShipment));
+    res.json(shipments);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/shipments/:id
-router.get('/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM shipments WHERE id = ?').get(req.params.id);
-  if (!row) return res.status(404).json({ error: 'Отгрузка не найдена' });
-  res.json(buildShipment(row));
+router.get('/:id', async (req, res) => {
+  try {
+    const row = await db.get('SELECT * FROM shipments WHERE id = $1', [req.params.id]);
+    if (!row) return res.status(404).json({ error: 'Отгрузка не найдена' });
+    res.json(await buildShipment(row));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/shipments
-router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_head'), (req, res) => {
-  const { orderId, orderNumber, counterpartyId, date, scheduledDate, invoiceNumber, amount, paymentDueDate, deliveryType, deliveryAddress, items = [] } = req.body;
+router.post('/', requireRole('admin', 'sales_manager', 'director', 'production_head'), async (req, res) => {
+  try {
+    const { orderId, orderNumber, counterpartyId, date, scheduledDate, invoiceNumber, amount, paymentDueDate, deliveryType, deliveryAddress, items = [] } = req.body;
 
-  const safeInvoiceNumber = invoiceNumber ? sanitizeStr(invoiceNumber) : null;
-  const safeOrderNumber = orderNumber ? sanitizeStr(orderNumber) : null;
-  const safeDeliveryAddress = deliveryAddress ? sanitizeStr(deliveryAddress) : null;
+    const safeInvoiceNumber = invoiceNumber ? sanitizeStr(invoiceNumber) : null;
+    const safeOrderNumber = orderNumber ? sanitizeStr(orderNumber) : null;
+    const safeDeliveryAddress = deliveryAddress ? sanitizeStr(deliveryAddress) : null;
 
-  // invoiceNumber is required
-  if (!safeInvoiceNumber) {
-    return res.status(400).json({ error: 'Поле invoiceNumber обязательно' });
-  }
+    if (!safeInvoiceNumber) {
+      return res.status(400).json({ error: 'Поле invoiceNumber обязательно' });
+    }
 
-  // Validate orderId exists if provided
-  let order = null;
-  if (orderId) {
-    order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
-    if (!order) return res.status(404).json({ error: 'Заказ не найден' });
+    let order = null;
+    if (orderId) {
+      order = await db.get('SELECT * FROM orders WHERE id = $1', [orderId]);
+      if (!order) return res.status(404).json({ error: 'Заказ не найден' });
 
-    // Block new shipment if all order items are already fully shipped
-    const orderItems = db.prepare('SELECT id, quantity, shipped FROM order_items WHERE order_id = ?').all(orderId);
-    if (orderItems.length > 0) {
-      const hasUnshipped = orderItems.some(i => (i.shipped || 0) < i.quantity);
-      if (!hasUnshipped) {
-        return res.status(400).json({ error: 'Все позиции заказа уже отгружены. Регистрация новой отгрузки невозможна.' });
+      const orderItems = await db.all('SELECT id, quantity, shipped FROM order_items WHERE order_id = $1', [orderId]);
+      if (orderItems.length > 0) {
+        const hasUnshipped = orderItems.some(i => (i.shipped || 0) < i.quantity);
+        if (!hasUnshipped) {
+          return res.status(400).json({ error: 'Все позиции заказа уже отгружены. Регистрация новой отгрузки невозможна.' });
+        }
       }
     }
-  }
 
-  const effectiveDate = scheduledDate || date;
+    const effectiveDate = scheduledDate || date;
 
-  // Auto-calculate paymentDueDate from contract.payment_delay if not provided
-  let effectivePaymentDueDate = paymentDueDate ? sanitizeStr(paymentDueDate) : null;
-  if (!effectivePaymentDueDate && order && order.contract_id) {
-    const contract = db.prepare('SELECT payment_delay FROM contracts WHERE id = ?').get(order.contract_id);
-    if (contract && contract.payment_delay && effectiveDate) {
-      const d = new Date(effectiveDate);
-      d.setDate(d.getDate() + contract.payment_delay);
-      effectivePaymentDueDate = d.toISOString().split('T')[0];
+    let effectivePaymentDueDate = paymentDueDate ? sanitizeStr(paymentDueDate) : null;
+    if (!effectivePaymentDueDate && order && order.contract_id) {
+      const contract = await db.get('SELECT payment_delay FROM contracts WHERE id = $1', [order.contract_id]);
+      if (contract && contract.payment_delay && effectiveDate) {
+        const d = new Date(effectiveDate);
+        d.setDate(d.getDate() + contract.payment_delay);
+        effectivePaymentDueDate = d.toISOString().split('T')[0];
+      }
     }
-  }
 
-  const result = db.prepare(`
-    INSERT INTO shipments (order_id, order_number, counterparty_id, date, scheduled_date, invoice_number, amount, status, paid_amount, delivery_type, delivery_address, payment_due_date)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled', 0, ?, ?, ?)
-  `).run(
-    orderId || null, safeOrderNumber, counterpartyId || null,
-    effectiveDate, scheduledDate || null,
-    safeInvoiceNumber, amount || 0,
-    deliveryType || 'pickup', safeDeliveryAddress, effectivePaymentDueDate
-  );
+    const result = await db.runReturning(`
+      INSERT INTO shipments (order_id, order_number, counterparty_id, date, scheduled_date, invoice_number, amount, status, paid_amount, delivery_type, delivery_address, payment_due_date)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 0, $8, $9, $10)
+    `, [
+      orderId || null, safeOrderNumber, counterpartyId || null,
+      effectiveDate, scheduledDate || null,
+      safeInvoiceNumber, amount || 0,
+      deliveryType || 'pickup', safeDeliveryAddress, effectivePaymentDueDate,
+    ]);
 
-  const shipmentId = result.lastInsertRowid;
+    const shipmentId = result.lastInsertRowid;
 
-  // Auto-create a pending payment record for this shipment
-  db.prepare(`
-    INSERT INTO payments (shipment_id, counterparty_id, amount, due_date, status, invoice_number)
-    VALUES (?, ?, ?, ?, 'pending', ?)
-  `).run(shipmentId, counterpartyId || null, amount || 0, effectivePaymentDueDate, safeInvoiceNumber);
+    await db.run(`
+      INSERT INTO payments (shipment_id, counterparty_id, amount, due_date, status, invoice_number)
+      VALUES ($1, $2, $3, $4, 'pending', $5)
+    `, [shipmentId, counterpartyId || null, amount || 0, effectivePaymentDueDate, safeInvoiceNumber]);
 
-  for (const item of items) {
-    db.prepare('INSERT INTO shipment_items (shipment_id, order_item_id, name, quantity, price) VALUES (?, ?, ?, ?, ?)').run(
-      shipmentId, item.specItemId || null, item.name, item.quantity || 0, item.price || 0
-    );
-    // Update order item shipped count
-    if (item.specItemId) {
-      db.prepare('UPDATE order_items SET shipped = shipped + ? WHERE id = ?').run(item.quantity || 0, item.specItemId);
+    for (const item of items) {
+      await db.run('INSERT INTO shipment_items (shipment_id, order_item_id, name, quantity, price) VALUES ($1, $2, $3, $4, $5)', [
+        shipmentId, item.specItemId || null, item.name, item.quantity || 0, item.price || 0,
+      ]);
+      if (item.specItemId) {
+        await db.run('UPDATE order_items SET shipped = shipped + $1 WHERE id = $2', [item.quantity || 0, item.specItemId]);
+      }
     }
-  }
 
-  // Update linked order status based on remaining unshipped items
-  if (orderId) {
-    const allOrderItems = db.prepare('SELECT quantity, shipped FROM order_items WHERE order_id = ?').all(orderId);
-    const allFullyShipped = allOrderItems.length > 0 && allOrderItems.every(i => (i.shipped || 0) >= i.quantity);
-    if (allFullyShipped) {
-      db.prepare("UPDATE orders SET status = 'shipped' WHERE id = ? AND status NOT IN ('shipped', 'completed')").run(orderId);
-    } else {
-      db.prepare("UPDATE orders SET status = 'scheduled_for_shipment' WHERE id = ? AND status = 'ready_for_shipment'").run(orderId);
+    if (orderId) {
+      const allOrderItems = await db.all('SELECT quantity, shipped FROM order_items WHERE order_id = $1', [orderId]);
+      const allFullyShipped = allOrderItems.length > 0 && allOrderItems.every(i => (i.shipped || 0) >= i.quantity);
+      if (allFullyShipped) {
+        await db.run("UPDATE orders SET status = 'shipped' WHERE id = $1 AND status NOT IN ('shipped', 'completed')", [orderId]);
+      } else {
+        await db.run("UPDATE orders SET status = 'scheduled_for_shipment' WHERE id = $1 AND status = 'ready_for_shipment'", [orderId]);
+      }
     }
-  }
 
-  logAudit(req.user.id, req.user.name, `Зарегистрирована отгрузка ${safeInvoiceNumber}`, 'Отгрузка', shipmentId, req.ip);
-  res.status(201).json(buildShipment(db.prepare('SELECT * FROM shipments WHERE id = ?').get(shipmentId)));
+    logAudit(req.user.id, req.user.name, `Зарегистрирована отгрузка ${safeInvoiceNumber}`, 'Отгрузка', shipmentId, req.ip);
+    const newShipment = await db.get('SELECT * FROM shipments WHERE id = $1', [shipmentId]);
+    res.status(201).json(await buildShipment(newShipment));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// PUT /api/shipments/:id/confirm — logistician confirms actual delivery/shipment
-router.put('/:id/confirm', requireRole('admin', 'sales_manager', 'director', 'production_head', 'warehouse'), (req, res) => {
-  const shipment = db.prepare('SELECT * FROM shipments WHERE id = ?').get(req.params.id);
-  if (!shipment) return res.status(404).json({ error: 'Отгрузка не найдена' });
-  if (shipment.status === 'shipped') return res.status(400).json({ error: 'Отгрузка уже подтверждена' });
+// PUT /api/shipments/:id/confirm
+router.put('/:id/confirm', requireRole('admin', 'sales_manager', 'director', 'production_head', 'warehouse'), async (req, res) => {
+  try {
+    const shipment = await db.get('SELECT * FROM shipments WHERE id = $1', [req.params.id]);
+    if (!shipment) return res.status(404).json({ error: 'Отгрузка не найдена' });
+    if (shipment.status === 'shipped') return res.status(400).json({ error: 'Отгрузка уже подтверждена' });
 
-  db.prepare("UPDATE shipments SET status = 'shipped' WHERE id = ?").run(req.params.id);
+    await db.run("UPDATE shipments SET status = 'shipped' WHERE id = $1", [req.params.id]);
 
-  // Move linked order to 'shipped' — check all items are fully shipped
-  if (shipment.order_id) {
-    const allOrderItems = db.prepare('SELECT quantity, shipped FROM order_items WHERE order_id = ?').all(shipment.order_id);
-    const allFullyShipped = allOrderItems.length === 0 || allOrderItems.every(i => (i.shipped || 0) >= i.quantity);
-    if (allFullyShipped) {
-      db.prepare("UPDATE orders SET status = 'shipped' WHERE id = ? AND status NOT IN ('shipped', 'completed')").run(shipment.order_id);
+    if (shipment.order_id) {
+      const allOrderItems = await db.all('SELECT quantity, shipped FROM order_items WHERE order_id = $1', [shipment.order_id]);
+      const allFullyShipped = allOrderItems.length === 0 || allOrderItems.every(i => (i.shipped || 0) >= i.quantity);
+      if (allFullyShipped) {
+        await db.run("UPDATE orders SET status = 'shipped' WHERE id = $1 AND status NOT IN ('shipped', 'completed')", [shipment.order_id]);
+      }
     }
-  }
 
-  logAudit(req.user.id, req.user.name, `Подтверждена отгрузка ${shipment.invoice_number}`, 'Отгрузка', shipment.id, req.ip);
-  res.json(buildShipment(db.prepare('SELECT * FROM shipments WHERE id = ?').get(req.params.id)));
+    logAudit(req.user.id, req.user.name, `Подтверждена отгрузка ${shipment.invoice_number}`, 'Отгрузка', shipment.id, req.ip);
+    const updated = await db.get('SELECT * FROM shipments WHERE id = $1', [req.params.id]);
+    res.json(await buildShipment(updated));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // PUT /api/shipments/:id
-router.put('/:id', requireRole('admin', 'sales_manager', 'director', 'production_head'), (req, res) => {
-  const shipment = db.prepare('SELECT * FROM shipments WHERE id = ?').get(req.params.id);
-  if (!shipment) return res.status(404).json({ error: 'Отгрузка не найдена' });
+router.put('/:id', requireRole('admin', 'sales_manager', 'director', 'production_head'), async (req, res) => {
+  try {
+    const shipment = await db.get('SELECT * FROM shipments WHERE id = $1', [req.params.id]);
+    if (!shipment) return res.status(404).json({ error: 'Отгрузка не найдена' });
 
-  const { status, paidAmount, paidDate, paymentDueDate } = req.body;
+    const { status, paidAmount, paidDate, paymentDueDate } = req.body;
 
-  const safeStatus = status !== undefined ? sanitizeStr(status) : undefined;
-  const safePaidDate = paidDate !== undefined ? sanitizeStr(paidDate) : undefined;
-  const safePaymentDueDate = paymentDueDate !== undefined ? sanitizeStr(paymentDueDate) : undefined;
+    const safeStatus = status !== undefined ? sanitizeStr(status) : undefined;
+    const safePaidDate = paidDate !== undefined ? sanitizeStr(paidDate) : undefined;
+    const safePaymentDueDate = paymentDueDate !== undefined ? sanitizeStr(paymentDueDate) : undefined;
 
-  db.prepare(`
-    UPDATE shipments SET
-      status = COALESCE(?, status),
-      paid_amount = COALESCE(?, paid_amount),
-      paid_date = COALESCE(?, paid_date),
-      payment_due_date = COALESCE(?, payment_due_date)
-    WHERE id = ?
-  `).run(safeStatus, paidAmount, safePaidDate, safePaymentDueDate, req.params.id);
+    await db.run(`
+      UPDATE shipments SET
+        status = COALESCE($1, status),
+        paid_amount = COALESCE($2, paid_amount),
+        paid_date = COALESCE($3, paid_date),
+        payment_due_date = COALESCE($4, payment_due_date)
+      WHERE id = $5
+    `, [safeStatus, paidAmount, safePaidDate, safePaymentDueDate, req.params.id]);
 
-  logAudit(req.user.id, req.user.name, `Обновлена отгрузка ${shipment.invoice_number}`, 'Отгрузка', shipment.id, req.ip);
-  res.json(buildShipment(db.prepare('SELECT * FROM shipments WHERE id = ?').get(req.params.id)));
+    logAudit(req.user.id, req.user.name, `Обновлена отгрузка ${shipment.invoice_number}`, 'Отгрузка', shipment.id, req.ip);
+    const updated = await db.get('SELECT * FROM shipments WHERE id = $1', [req.params.id]);
+    res.json(await buildShipment(updated));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

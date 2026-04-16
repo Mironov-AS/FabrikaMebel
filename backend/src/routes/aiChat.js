@@ -8,47 +8,47 @@ const { readConfig } = require('./llmConfig');
 const router = express.Router();
 router.use(authenticate);
 
-function buildSystemPrompt() {
+async function buildSystemPrompt() {
   const today = new Date().toISOString().slice(0, 10);
 
-  const counterparties = db.prepare('SELECT * FROM counterparties ORDER BY name').all();
+  const counterparties = await db.all('SELECT * FROM counterparties ORDER BY name');
 
-  const contracts = db.prepare(`
+  const contracts = await db.all(`
     SELECT c.id, c.number, c.status, c.amount, c.date, c.valid_until, c.subject,
            c.payment_delay, c.penalty_rate, cp.name AS counterparty_name
     FROM contracts c
     LEFT JOIN counterparties cp ON c.counterparty_id = cp.id
     ORDER BY c.date DESC
-  `).all();
+  `);
 
-  const orders = db.prepare(`
+  const orders = await db.all(`
     SELECT o.id, o.number, o.status, o.total_amount, o.date, o.shipment_deadline, o.priority,
            c.number AS contract_number, cp.name AS counterparty_name
     FROM orders o
     LEFT JOIN contracts c ON o.contract_id = c.id
     LEFT JOIN counterparties cp ON o.counterparty_id = cp.id
     ORDER BY o.date DESC
-  `).all();
+  `);
 
-  const payments = db.prepare(`
+  const payments = await db.all(`
     SELECT p.id, p.amount, p.due_date, p.paid_date, p.status,
            p.invoice_number, p.penalty_days, p.penalty_amount,
            cp.name AS counterparty_name
     FROM payments p
     LEFT JOIN counterparties cp ON p.counterparty_id = cp.id
     ORDER BY p.due_date DESC
-  `).all();
+  `);
 
-  const shipments = db.prepare(`
+  const shipments = await db.all(`
     SELECT s.id, s.order_number, s.date, s.invoice_number, s.amount,
            s.status, s.payment_due_date, s.paid_amount, s.paid_date,
            cp.name AS counterparty_name
     FROM shipments s
     LEFT JOIN counterparties cp ON s.counterparty_id = cp.id
     ORDER BY s.date DESC
-  `).all();
+  `);
 
-  const claims = db.prepare(`
+  const claims = await db.all(`
     SELECT cl.id, cl.number, cl.date, cl.deadline, cl.description,
            cl.status, cl.responsible, cl.resolution,
            c.number AS contract_number, cp.name AS counterparty_name
@@ -56,9 +56,9 @@ function buildSystemPrompt() {
     LEFT JOIN contracts c ON cl.contract_id = c.id
     LEFT JOIN counterparties cp ON cl.counterparty_id = cp.id
     ORDER BY cl.date DESC
-  `).all();
+  `);
 
-  const production = db.prepare(`
+  const production = await db.all(`
     SELECT pt.id, pt.name, pt.status, pt.start_date, pt.end_date,
            pt.progress, pt.responsible, pt.priority, pt.order_number,
            cp.name AS counterparty_name
@@ -66,7 +66,7 @@ function buildSystemPrompt() {
     LEFT JOIN orders o ON pt.order_id = o.id
     LEFT JOIN counterparties cp ON o.counterparty_id = cp.id
     ORDER BY pt.end_date ASC
-  `).all();
+  `);
 
   const statusLabels = {
     active: 'активен', completed: 'выполнен', suspended: 'приостановлен', draft: 'черновик',
@@ -89,14 +89,14 @@ function buildSystemPrompt() {
   ).sort((a, b) => new Date(a.shipment_deadline) - new Date(b.shipment_deadline));
 
   // Contract files with extracted text
-  const contractFiles = db.prepare(`
+  const contractFiles = await db.all(`
     SELECT cf.contract_id, cf.original_name, cf.mimetype, cf.content_text,
            c.number AS contract_number
     FROM contract_files cf
     LEFT JOIN contracts c ON cf.contract_id = c.id
     WHERE cf.content_text IS NOT NULL AND cf.content_text != ''
     ORDER BY cf.uploaded_at DESC
-  `).all();
+  `);
 
   // Group files by contract
   const filesByContract = {};
@@ -206,7 +206,6 @@ function yandexStream(apiKey, folderId, modelUri, messages, temperature, maxToke
 }
 
 function yandexOpenAIStream(apiKey, folderId, modelUri, messages, temperature, maxTokens) {
-  // OpenAI-compatible endpoint for models not supported by gRPC API (e.g. DeepSeek)
   const openAIMessages = messages.map((m) => ({ role: m.role, content: m.text }));
   const body = JSON.stringify({
     model: modelUri,
@@ -271,12 +270,10 @@ async function handleYandex(res, pCfg, systemPrompt, history, message) {
   let folderId = pCfg.folderId || '';
   let modelUri;
 
-  // Model can be stored as a full gpt:// URI (new format from custom model management)
   if (pCfg.model && pCfg.model.startsWith('gpt://')) {
     modelUri = pCfg.model;
     folderId = pCfg.model.slice(6).split('/')[0];
   } else {
-    // Legacy: parse folderId — user may have accidentally entered a full gpt:// URI
     if (folderId.startsWith('gpt://')) {
       const parts = folderId.slice(6).split('/');
       folderId = parts[0];
@@ -303,7 +300,6 @@ async function handleYandex(res, pCfg, systemPrompt, history, message) {
       try {
         const parsed = JSON.parse(errBody);
         errMsg = parsed.error?.message || parsed.message || errMsg;
-        // Detect gRPC-only error — fall back to OpenAI-compatible endpoint
         if (errMsg && (errMsg.toLowerCase().includes('grpc') || errMsg.toLowerCase().includes('openai'))) {
           isGrpcError = true;
         }
@@ -541,7 +537,7 @@ router.post('/', async (req, res) => {
     const config = readConfig();
     const provider = config.activeProvider || 'yandex';
     const pCfg = config.providers?.[provider] || {};
-    const systemPrompt = buildSystemPrompt();
+    const systemPrompt = await buildSystemPrompt();
 
     if (provider === 'yandex') {
       await handleYandex(res, pCfg, systemPrompt, history, message);

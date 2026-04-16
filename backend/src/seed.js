@@ -1,637 +1,635 @@
 const bcrypt = require('bcryptjs');
 const db = require('./db');
 
-console.log('🌱 Seeding database with comprehensive test data...\n');
+(async () => {
+  await db.init();
+  console.log('🌱 Seeding database with comprehensive test data...\n');
 
-// ─────────────────────────────────────────────────────────
-// WIPE all tables in safe order (FK constraints respected)
-// ─────────────────────────────────────────────────────────
-db.exec(`
-  DELETE FROM route_shipments;
-  DELETE FROM delivery_routes;
-  DELETE FROM drivers;
-  DELETE FROM audit_log;
-  DELETE FROM chat_messages;
-  DELETE FROM notifications;
-  DELETE FROM production_tasks;
-  DELETE FROM claims;
-  DELETE FROM payments;
-  DELETE FROM shipment_items;
-  DELETE FROM shipments;
-  DELETE FROM order_items;
-  DELETE FROM orders;
-  DELETE FROM contract_files;
-  DELETE FROM contract_versions;
-  DELETE FROM contract_obligations;
-  DELETE FROM contract_conditions;
-  DELETE FROM contracts;
-  DELETE FROM counterparties;
-  DELETE FROM password_reset_tokens;
-  DELETE FROM refresh_tokens;
-  DELETE FROM users;
-`);
-console.log('✓ All tables cleared');
+  // ─────────────────────────────────────────────────────────
+  // WIPE all tables in safe order (FK constraints respected)
+  // ─────────────────────────────────────────────────────────
+  await db.run('DELETE FROM route_shipments');
+  await db.run('DELETE FROM delivery_routes');
+  await db.run('DELETE FROM drivers');
+  await db.run('DELETE FROM audit_log');
+  await db.run('DELETE FROM chat_messages');
+  await db.run('DELETE FROM notifications');
+  await db.run('DELETE FROM production_tasks');
+  await db.run('DELETE FROM claims');
+  await db.run('DELETE FROM payments');
+  await db.run('DELETE FROM shipment_items');
+  await db.run('DELETE FROM shipments');
+  await db.run('DELETE FROM order_items');
+  await db.run('DELETE FROM orders');
+  await db.run('DELETE FROM contract_files');
+  await db.run('DELETE FROM contract_versions');
+  await db.run('DELETE FROM contract_obligations');
+  await db.run('DELETE FROM contract_conditions');
+  await db.run('DELETE FROM contracts');
+  await db.run('DELETE FROM counterparties');
+  await db.run('DELETE FROM password_reset_tokens');
+  await db.run('DELETE FROM refresh_tokens');
+  await db.run('DELETE FROM users');
+  console.log('✓ All tables cleared');
 
-// ─────────────────────────────────────────────────────────
-// USERS  (8 roles: admin, sales_manager, accountant,
-//         production_specialist, production_head, analyst, director, guest)
-// ─────────────────────────────────────────────────────────
-const PASSWORD_HASH = bcrypt.hashSync('password123', 10);
+  // ─────────────────────────────────────────────────────────
+  // USERS
+  // ─────────────────────────────────────────────────────────
+  const PASSWORD_HASH = bcrypt.hashSync('password123', 10);
 
-const insertUser = db.prepare(`
-  INSERT INTO users (id, name, email, password_hash, role, position, active, last_login)
-  VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-`);
+  await db.transaction(async (client) => {
+    await client.run(`INSERT INTO users (id, name, email, password_hash, role, position, active, last_login) VALUES ($1, $2, $3, $4, $5, $6, 1, $7)`,
+      [1, 'Иванов А.С.',   'admin@furniture.ru',      PASSWORD_HASH, 'admin',                 'Системный администратор',  '2026-04-10 09:15']);
+    await client.run(`INSERT INTO users (id, name, email, password_hash, role, position, active, last_login) VALUES ($1, $2, $3, $4, $5, $6, 1, $7)`,
+      [2, 'Петрова М.В.',  'sales@furniture.ru',      PASSWORD_HASH, 'sales_manager',         'Менеджер по продажам',      '2026-04-10 08:30']);
+    await client.run(`INSERT INTO users (id, name, email, password_hash, role, position, active, last_login) VALUES ($1, $2, $3, $4, $5, $6, 1, $7)`,
+      [3, 'Сидоров П.К.',  'accountant@furniture.ru', PASSWORD_HASH, 'accountant',            'Главный бухгалтер',         '2026-04-09 17:45']);
+    await client.run(`INSERT INTO users (id, name, email, password_hash, role, position, active, last_login) VALUES ($1, $2, $3, $4, $5, $6, 1, $7)`,
+      [4, 'Козлов Д.В.',   'prod@furniture.ru',       PASSWORD_HASH, 'production_specialist', 'Специалист производства',   '2026-04-10 07:00']);
+    await client.run(`INSERT INTO users (id, name, email, password_hash, role, position, active, last_login) VALUES ($1, $2, $3, $4, $5, $6, 1, $7)`,
+      [5, 'Новиков А.И.',  'prodhead@furniture.ru',   PASSWORD_HASH, 'production_head',       'Начальник производства',    '2026-04-10 08:00']);
+    await client.run(`INSERT INTO users (id, name, email, password_hash, role, position, active, last_login) VALUES ($1, $2, $3, $4, $5, $6, 1, $7)`,
+      [6, 'Морозова Е.А.', 'analyst@furniture.ru',    PASSWORD_HASH, 'analyst',               'Аналитик',                  '2026-04-09 16:00']);
+    await client.run(`INSERT INTO users (id, name, email, password_hash, role, position, active, last_login) VALUES ($1, $2, $3, $4, $5, $6, 1, $7)`,
+      [7, 'Волков С.Р.',   'director@furniture.ru',   PASSWORD_HASH, 'director',              'Директор',                  '2026-04-10 09:00']);
+    await client.run(`INSERT INTO users (id, name, email, password_hash, role, position, active, last_login) VALUES ($1, $2, $3, $4, $5, $6, 1, $7)`,
+      [8, 'Гостев И.И.',   'guest@furniture.ru',      PASSWORD_HASH, 'guest',                 'Гость',                     '2026-04-07 12:00']);
+  });
+  // Reset sequence
+  await db.run("SELECT setval('users_id_seq', (SELECT MAX(id) FROM users))");
+  console.log('✓ Users seeded (8)');
 
-db.transaction(() => {
-  insertUser.run(1, 'Иванов А.С.',    'admin@furniture.ru',      PASSWORD_HASH, 'admin',                  'Системный администратор',    '2026-04-10 09:15');
-  insertUser.run(2, 'Петрова М.В.',   'sales@furniture.ru',      PASSWORD_HASH, 'sales_manager',          'Менеджер по продажам',        '2026-04-10 08:30');
-  insertUser.run(3, 'Сидоров П.К.',   'accountant@furniture.ru', PASSWORD_HASH, 'accountant',             'Главный бухгалтер',           '2026-04-09 17:45');
-  insertUser.run(4, 'Козлов Д.В.',    'prod@furniture.ru',       PASSWORD_HASH, 'production_specialist',  'Специалист производства',    '2026-04-10 07:00');
-  insertUser.run(5, 'Новиков А.И.',   'prodhead@furniture.ru',   PASSWORD_HASH, 'production_head',        'Начальник производства',      '2026-04-10 08:00');
-  insertUser.run(6, 'Морозова Е.А.',  'analyst@furniture.ru',    PASSWORD_HASH, 'analyst',                'Аналитик',                    '2026-04-09 16:00');
-  insertUser.run(7, 'Волков С.Р.',    'director@furniture.ru',   PASSWORD_HASH, 'director',               'Директор',                    '2026-04-10 09:00');
-  insertUser.run(8, 'Гостев И.И.',    'guest@furniture.ru',      PASSWORD_HASH, 'guest',                  'Гость',                       '2026-04-07 12:00');
-})();
-console.log('✓ Users seeded (8)');
+  // ─────────────────────────────────────────────────────────
+  // COUNTERPARTIES
+  // ─────────────────────────────────────────────────────────
+  await db.transaction(async (client) => {
+    const rows = [
+      [1, 'ООО «МебельТорг»',   '7701234567',   '770101001', 'г. Москва, ул. Тверская, 15',           'Алексеев В.П.',  '+7 495 123-45-67', 'mebelorg@mail.ru',     'high',   'г. Москва, ул. Складская, 8'],
+      [2, 'ИП Смирнова О.В.',   '771987654321', null,        'г. Москва, пр. Мира, 88',               'Смирнова О.В.',  '+7 916 234-56-78', 'smirnova@gmail.com',   'medium', null],
+      [3, 'АО «ОфисПлюс»',      '5032109876',   '503201001', 'г. Подольск, ул. Ленина, 5',            'Куликов А.Б.',   '+7 499 345-67-89', 'ofisplus@ofisplus.ru', 'high',   'г. Подольск, ул. Промышленная, 3'],
+      [4, 'ООО «КомфортДом»',   '6321456789',   '632101001', 'г. Самара, ул. Победы, 22',             'Зайцев И.С.',    '+7 846 456-78-90', 'komfort@komfort.ru',   'low',    'г. Самара, ул. Складская, 12'],
+      [5, 'ЗАО «ГрандМебель»',  '7809876543',   '780901001', 'г. Санкт-Петербург, пр. Невский, 100', 'Фёдорова Н.А.', '+7 812 567-89-01', 'grand@grandmebel.ru',  'high',   'г. СПб, Индустриальный пр., 5'],
+      [6, 'ООО «СтильМебель»',  '1655043210',   '165501001', 'г. Казань, ул. Баумана, 34',            'Гарипов Р.Р.',   '+7 843 321-45-67', 'stil@stilmebel.ru',    'high',   'г. Казань, ул. Тихая, 9'],
+      [7, 'ИП Орлов Д.В.',      '666312345678', null,        'г. Екатеринбург, ул. Малышева, 78',     'Орлов Д.В.',     '+7 343 432-56-78', 'orlov.d@mail.ru',      'medium', null],
+      [8, 'ООО «ТехноОфис»',    '5407654321',   '540701001', 'г. Новосибирск, пр. Красный, 45',       'Власенко Т.С.',  '+7 383 543-67-89', 'techno@technoofis.ru', 'low',    'г. Новосибирск, ул. Депутатская, 2'],
+      [9, 'ПАО «РосОфис»',      '7740123456',   '774001001', 'г. Москва, ул. Большая Ордынка, 20',    'Лебедев К.М.',   '+7 495 654-32-10', 'ros@rosofis.ru',       'high',   'г. Москва, Промзона Текстиль, 3'],
+      [10,'ООО «ДизайнПро»',    '7841098765',   '784101001', 'г. Санкт-Петербург, ул. Садовая, 55',   'Касимова Д.Н.',  '+7 812 765-43-21', 'design@designpro.ru',  'medium', null],
+    ];
+    for (const r of rows) {
+      await client.run(
+        'INSERT INTO counterparties (id, name, inn, kpp, address, contact, phone, email, priority, delivery_address) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+        r
+      );
+    }
+  });
+  await db.run("SELECT setval('counterparties_id_seq', (SELECT MAX(id) FROM counterparties))");
+  console.log('✓ Counterparties seeded (10)');
 
-// ─────────────────────────────────────────────────────────
-// COUNTERPARTIES  (10 контрагентов с разным приоритетом)
-// ─────────────────────────────────────────────────────────
-const insertCP = db.prepare(`
-  INSERT INTO counterparties (id, name, inn, kpp, address, contact, phone, email, priority, delivery_address)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
+  // ─────────────────────────────────────────────────────────
+  // CONTRACTS
+  // ─────────────────────────────────────────────────────────
+  await db.transaction(async (client) => {
+    const contracts = [
+      [1,  'ДГ-2026-001', 1, '2026-01-15', '2026-12-31', 'active',    2850000, 'Поставка офисной мебели',                          30, 0.10, 'contract_001.pdf',  2],
+      [2,  'ДГ-2026-002', 3, '2026-02-01', '2026-09-30', 'active',    1450000, 'Поставка корпусной мебели для офисов',              14, 0.05, 'contract_002.docx', 2],
+      [3,  'ДГ-2026-003', 5, '2026-03-10', '2027-03-09', 'active',    5200000, 'Поставка мягкой мебели для гостиниц',               45, 0.15, 'contract_003.pdf',  2],
+      [4,  'ДГ-2026-004', 6, '2026-01-20', '2026-12-31', 'active',    1800000, 'Поставка офисной мебели для корпоративного клиента',21, 0.10, 'contract_004.pdf',  2],
+      [5,  'ДГ-2026-005', 9, '2026-02-10', '2026-12-31', 'active',     980000, 'Поставка конференц-мебели',                         30, 0.08, 'contract_005.pdf',  2],
+      [6,  'ДГ-2026-006', 7, '2026-03-01', '2026-11-30', 'draft',      650000, 'Поставка корпусной мебели (на согласовании)',        30, 0.05, null,                2],
+      [7,  'ДГ-2026-007',10, '2026-03-20', '2027-03-19', 'draft',     1100000, 'Поставка мебели для переговорных комнат (2-й этап)', 30, 0.05, null,                2],
+      [8,  'ДГ-2026-008', 6, '2026-03-01', '2026-08-31', 'suspended',  430000, 'Поставка складской мебели и стеллажей',              30, 0.10, 'contract_008.pdf',  2],
+      [9,  'ДГ-2026-009', 8, '2026-02-25', '2027-02-24', 'suspended', 2200000, 'Поставка конференц-мебели для переговорных комнат',  14, 0.10, 'contract_009.pdf',  2],
+      [10, 'ДГ-2025-045', 2, '2025-10-01', '2026-03-31', 'completed',  320000, 'Поставка кухонной мебели',                           10, 0.10, 'contract_045.pdf',  2],
+      [11, 'ДГ-2025-031', 7, '2025-07-01', '2025-12-31', 'completed',  380000, 'Поставка детской мебели',                            14, 0.10, 'contract_031.pdf',  2],
+      [12, 'ДГ-2025-018', 4, '2025-04-01', '2025-12-31', 'completed',  750000, 'Поставка мягкой мебели для жилых помещений',         45, 0.08, 'contract_018.pdf',  2],
+    ];
+    for (const r of contracts) {
+      await client.run(
+        'INSERT INTO contracts (id, number, counterparty_id, date, valid_until, status, amount, subject, payment_delay, penalty_rate, file_name, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+        r
+      );
+    }
+  });
+  await db.run("SELECT setval('contracts_id_seq', (SELECT MAX(id) FROM contracts))");
 
-db.transaction(() => {
-  insertCP.run(1, 'ООО «МебельТорг»',    '7701234567',   '770101001', 'г. Москва, ул. Тверская, 15',            'Алексеев В.П.',  '+7 495 123-45-67', 'mebelorg@mail.ru',      'high',   'г. Москва, ул. Складская, 8');
-  insertCP.run(2, 'ИП Смирнова О.В.',    '771987654321', null,        'г. Москва, пр. Мира, 88',                'Смирнова О.В.',  '+7 916 234-56-78', 'smirnova@gmail.com',    'medium', null);
-  insertCP.run(3, 'АО «ОфисПлюс»',       '5032109876',   '503201001', 'г. Подольск, ул. Ленина, 5',             'Куликов А.Б.',   '+7 499 345-67-89', 'ofisplus@ofisplus.ru',  'high',   'г. Подольск, ул. Промышленная, 3');
-  insertCP.run(4, 'ООО «КомфортДом»',    '6321456789',   '632101001', 'г. Самара, ул. Победы, 22',              'Зайцев И.С.',    '+7 846 456-78-90', 'komfort@komfort.ru',    'low',    'г. Самара, ул. Складская, 12');
-  insertCP.run(5, 'ЗАО «ГрандМебель»',  '7809876543',   '780901001', 'г. Санкт-Петербург, пр. Невский, 100',  'Фёдорова Н.А.', '+7 812 567-89-01', 'grand@grandmebel.ru',   'high',   'г. СПб, Индустриальный пр., 5');
-  insertCP.run(6, 'ООО «СтильМебель»',   '1655043210',   '165501001', 'г. Казань, ул. Баумана, 34',             'Гарипов Р.Р.',   '+7 843 321-45-67', 'stil@stilmebel.ru',     'high',   'г. Казань, ул. Тихая, 9');
-  insertCP.run(7, 'ИП Орлов Д.В.',       '666312345678', null,        'г. Екатеринбург, ул. Малышева, 78',      'Орлов Д.В.',     '+7 343 432-56-78', 'orlov.d@mail.ru',       'medium', null);
-  insertCP.run(8, 'ООО «ТехноОфис»',     '5407654321',   '540701001', 'г. Новосибирск, пр. Красный, 45',        'Власенко Т.С.',  '+7 383 543-67-89', 'techno@technoofis.ru',  'low',    'г. Новосибирск, ул. Депутатская, 2');
-  insertCP.run(9, 'ПАО «РосОфис»',       '7740123456',   '774001001', 'г. Москва, ул. Большая Ордынка, 20',     'Лебедев К.М.',   '+7 495 654-32-10', 'ros@rosofis.ru',        'high',   'г. Москва, Промзона Текстиль, 3');
-  insertCP.run(10,'ООО «ДизайнПро»',     '7841098765',   '784101001', 'г. Санкт-Петербург, ул. Садовая, 55',    'Касимова Д.Н.',  '+7 812 765-43-21', 'design@designpro.ru',  'medium', null);
-})();
-console.log('✓ Counterparties seeded (10)');
+  // Contract conditions
+  await db.transaction(async (client) => {
+    const conditions = [
+      [1, 'Поставка партиями по мере производства', 1],
+      [1, 'Предоставление сертификатов качества на каждую партию', 1],
+      [1, 'Доставка в рабочие дни с 9:00 до 18:00', 0],
+      [2, 'Поставка согласно спецификации (Приложение №1)', 1],
+      [2, 'Гарантийный срок — 24 месяца с момента поставки', 1],
+      [3, 'Доставка собственным транспортом', 0],
+      [3, 'Монтаж мебели включён в стоимость', 0],
+      [3, 'Гарантия 36 месяцев', 1],
+      [4, 'Поставка поэтапно согласно производственному плану', 1],
+      [4, 'Обязательная маркировка каждой единицы продукции', 0],
+      [5, 'Монтаж силами поставщика', 0],
+      [5, 'Предоставление гарантии 24 месяца', 1],
+      [10, 'Все обязательства сторон выполнены в срок', 1],
+      [11, 'Все обязательства сторон выполнены в срок', 1],
+      [12, 'Договор закрыт, претензий нет', 1],
+    ];
+    for (const r of conditions) {
+      await client.run('INSERT INTO contract_conditions (contract_id, text, fulfilled) VALUES ($1, $2, $3)', r);
+    }
+  });
 
-// ─────────────────────────────────────────────────────────
-// CONTRACTS  (12: 5 active, 2 draft, 2 suspended, 3 completed)
-// ─────────────────────────────────────────────────────────
-const insertContract = db.prepare(`
-  INSERT INTO contracts (id, number, counterparty_id, date, valid_until, status, amount, subject, payment_delay, penalty_rate, file_name, created_by)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
+  // Contract obligations
+  await db.transaction(async (client) => {
+    const obligations = [
+      [1, 'seller', 'Изготовить и поставить мебель согласно спецификации',      '2026-05-30', 'in_progress'],
+      [1, 'buyer',  'Произвести оплату в течение 30 дней после поставки',        null,         'pending'],
+      [1, 'buyer',  'Предоставить схему расстановки мебели в офисе',             '2026-02-01', 'in_progress'],
+      [2, 'seller', 'Изготовить и поставить мебель согласно спецификации',      '2026-05-15', 'in_progress'],
+      [2, 'buyer',  'Произвести авансовый платёж 30% до начала производства',   '2026-02-15', 'in_progress'],
+      [3, 'seller', 'Произвести и поставить мягкую мебель',                     '2026-07-31', 'pending'],
+      [3, 'buyer',  'Предоставить схемы расстановки',                           '2026-04-15', 'overdue'],
+      [3, 'seller', 'Выполнить монтаж после поставки',                          '2026-08-31', 'pending'],
+      [4, 'seller', 'Изготовить и поставить офисную мебель согласно спецификации','2026-05-20','in_progress'],
+      [4, 'buyer',  'Произвести авансовый платёж 30% до начала производства',   '2026-02-01', 'in_progress'],
+      [5, 'seller', 'Поставить и смонтировать конференц-мебель',                '2026-06-30', 'pending'],
+      [5, 'buyer',  'Предоставить поэтажный план помещений для расстановки',    '2026-03-15', 'overdue'],
+      [8, 'seller', 'Поставить складскую мебель согласно спецификации',         '2026-07-31', 'pending'],
+      [9, 'buyer',  'Устранить разногласия по спецификации',                    '2026-04-30', 'pending'],
+    ];
+    for (const r of obligations) {
+      await client.run('INSERT INTO contract_obligations (contract_id, party, text, deadline, status) VALUES ($1,$2,$3,$4,$5)', r);
+    }
+  });
 
-db.transaction(() => {
-  // Active
-  insertContract.run(1,  'ДГ-2026-001', 1, '2026-01-15', '2026-12-31', 'active',    2850000, 'Поставка офисной мебели',                          30, 0.10, 'contract_001.pdf',  2);
-  insertContract.run(2,  'ДГ-2026-002', 3, '2026-02-01', '2026-09-30', 'active',    1450000, 'Поставка корпусной мебели для офисов',              14, 0.05, 'contract_002.docx', 2);
-  insertContract.run(3,  'ДГ-2026-003', 5, '2026-03-10', '2027-03-09', 'active',    5200000, 'Поставка мягкой мебели для гостиниц',               45, 0.15, 'contract_003.pdf',  2);
-  insertContract.run(4,  'ДГ-2026-004', 6, '2026-01-20', '2026-12-31', 'active',    1800000, 'Поставка офисной мебели для корпоративного клиента',21, 0.10, 'contract_004.pdf',  2);
-  insertContract.run(5,  'ДГ-2026-005', 9, '2026-02-10', '2026-12-31', 'active',     980000, 'Поставка конференц-мебели',                         30, 0.08, 'contract_005.pdf',  2);
-  // Draft
-  insertContract.run(6,  'ДГ-2026-006', 7, '2026-03-01', '2026-11-30', 'draft',      650000, 'Поставка корпусной мебели (на согласовании)',        30, 0.05, null,                2);
-  insertContract.run(7,  'ДГ-2026-007', 10,'2026-03-20', '2027-03-19', 'draft',     1100000, 'Поставка мебели для переговорных комнат (2-й этап)', 30, 0.05, null,                2);
-  // Suspended
-  insertContract.run(8,  'ДГ-2026-008', 6, '2026-03-01', '2026-08-31', 'suspended',  430000, 'Поставка складской мебели и стеллажей',              30, 0.10, 'contract_008.pdf',  2);
-  insertContract.run(9,  'ДГ-2026-009', 8, '2026-02-25', '2027-02-24', 'suspended', 2200000, 'Поставка конференц-мебели для переговорных комнат',  14, 0.10, 'contract_009.pdf',  2);
-  // Completed
-  insertContract.run(10, 'ДГ-2025-045', 2, '2025-10-01', '2026-03-31', 'completed',  320000, 'Поставка кухонной мебели',                           10, 0.10, 'contract_045.pdf',  2);
-  insertContract.run(11, 'ДГ-2025-031', 7, '2025-07-01', '2025-12-31', 'completed',  380000, 'Поставка детской мебели',                            14, 0.10, 'contract_031.pdf',  2);
-  insertContract.run(12, 'ДГ-2025-018', 4, '2025-04-01', '2025-12-31', 'completed',  750000, 'Поставка мягкой мебели для жилых помещений',         45, 0.08, 'contract_018.pdf',  2);
-})();
+  // Contract versions
+  await db.transaction(async (client) => {
+    const versions = [
+      [1,  1, '2026-01-15', 'Петрова М.В.',  'Создание договора'],
+      [1,  2, '2026-02-10', 'Петрова М.В.',  'Изменение суммы договора с 2 700 000 до 2 850 000'],
+      [1,  3, '2026-03-05', 'Иванов А.С.',   'Добавлено условие о маркировке'],
+      [2,  1, '2026-02-01', 'Петрова М.В.',  'Создание договора'],
+      [2,  2, '2026-02-20', 'Петрова М.В.',  'Уточнение спецификации — Приложение №1 v2'],
+      [3,  1, '2026-03-10', 'Петрова М.В.',  'Создание договора'],
+      [4,  1, '2026-01-20', 'Петрова М.В.',  'Создание договора'],
+      [5,  1, '2026-02-10', 'Петрова М.В.',  'Создание договора'],
+      [6,  1, '2026-03-01', 'Петрова М.В.',  'Создание договора (черновик)'],
+      [7,  1, '2026-03-20', 'Петрова М.В.',  'Создание договора (черновик)'],
+      [8,  1, '2026-03-01', 'Петрова М.В.',  'Создание договора'],
+      [8,  2, '2026-03-18', 'Иванов А.С.',   'Договор приостановлен — разногласия по спецификации'],
+      [9,  1, '2026-02-25', 'Петрова М.В.',  'Создание договора'],
+      [9,  2, '2026-03-30', 'Иванов А.С.',   'Договор приостановлен по инициативе клиента'],
+      [10, 1, '2025-10-01', 'Петрова М.В.',  'Создание договора'],
+      [10, 2, '2026-04-01', 'Петрова М.В.',  'Договор выполнен — закрытие'],
+      [11, 1, '2025-07-01', 'Петрова М.В.',  'Создание договора'],
+      [11, 2, '2026-01-05', 'Петрова М.В.',  'Договор выполнен — все обязательства исполнены'],
+      [12, 1, '2025-04-01', 'Петрова М.В.',  'Создание договора'],
+      [12, 2, '2026-01-10', 'Петрова М.В.',  'Договор закрыт'],
+    ];
+    for (const r of versions) {
+      await client.run('INSERT INTO contract_versions (contract_id, version_num, date, author, changes) VALUES ($1,$2,$3,$4,$5)', r);
+    }
+  });
 
-// Contract conditions
-const insertCondition = db.prepare(`INSERT INTO contract_conditions (contract_id, text, fulfilled) VALUES (?, ?, ?)`);
-db.transaction(() => {
-  insertCondition.run(1, 'Поставка партиями по мере производства', 1);
-  insertCondition.run(1, 'Предоставление сертификатов качества на каждую партию', 1);
-  insertCondition.run(1, 'Доставка в рабочие дни с 9:00 до 18:00', 0);
-  insertCondition.run(2, 'Поставка согласно спецификации (Приложение №1)', 1);
-  insertCondition.run(2, 'Гарантийный срок — 24 месяца с момента поставки', 1);
-  insertCondition.run(3, 'Доставка собственным транспортом', 0);
-  insertCondition.run(3, 'Монтаж мебели включён в стоимость', 0);
-  insertCondition.run(3, 'Гарантия 36 месяцев', 1);
-  insertCondition.run(4, 'Поставка поэтапно согласно производственному плану', 1);
-  insertCondition.run(4, 'Обязательная маркировка каждой единицы продукции', 0);
-  insertCondition.run(5, 'Монтаж силами поставщика', 0);
-  insertCondition.run(5, 'Предоставление гарантии 24 месяца', 1);
-  insertCondition.run(10, 'Все обязательства сторон выполнены в срок', 1);
-  insertCondition.run(11, 'Все обязательства сторон выполнены в срок', 1);
-  insertCondition.run(12, 'Договор закрыт, претензий нет', 1);
-})();
+  // Contract files (metadata only — no physical files in S3 for seed data)
+  await db.transaction(async (client) => {
+    const files = [
+      [1,  'Договор_ДГ-2026-001.pdf',      'c1_v1_contract.pdf',    'application/pdf',  245120, 2, 'Петрова М.В.', '2026-01-15 14:22'],
+      [1,  'Спецификация_ДГ-2026-001.xlsx','c1_v1_spec.xlsx',        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 38912, 2, 'Петрова М.В.', '2026-01-15 14:25'],
+      [2,  'Договор_ДГ-2026-002.docx',     'c2_v1_contract.docx',   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 184320, 2, 'Петрова М.В.', '2026-02-01 10:10'],
+      [3,  'Договор_ДГ-2026-003.pdf',      'c3_v1_contract.pdf',    'application/pdf',  312000, 2, 'Петрова М.В.', '2026-03-10 11:00'],
+      [3,  'Схема расстановки.jpg',         'c3_layout.jpg',          'image/jpeg',       512000, 2, 'Петрова М.В.', '2026-03-20 15:30'],
+      [4,  'Договор_ДГ-2026-004.pdf',      'c4_v1_contract.pdf',    'application/pdf',  198000, 2, 'Петрова М.В.', '2026-01-20 09:45'],
+      [5,  'Договор_ДГ-2026-005.pdf',      'c5_v1_contract.pdf',    'application/pdf',  220000, 2, 'Петрова М.В.', '2026-02-10 12:00'],
+      [10, 'Договор_ДГ-2025-045_закрыт.pdf','c10_v2_contract.pdf',  'application/pdf',  178000, 2, 'Петрова М.В.', '2026-04-01 16:00'],
+    ];
+    for (const r of files) {
+      await client.run(
+        'INSERT INTO contract_files (contract_id, original_name, stored_name, mimetype, size, uploaded_by, uploaded_by_name, uploaded_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+        r
+      );
+    }
+  });
+  console.log('✓ Contracts seeded (12) with conditions, obligations, versions, files');
 
-// Contract obligations
-const insertObligation = db.prepare(`INSERT INTO contract_obligations (contract_id, party, text, deadline, status) VALUES (?, ?, ?, ?, ?)`);
-db.transaction(() => {
-  insertObligation.run(1, 'seller', 'Изготовить и поставить мебель согласно спецификации',      '2026-05-30', 'in_progress');
-  insertObligation.run(1, 'buyer',  'Произвести оплату в течение 30 дней после поставки',        null,         'pending');
-  insertObligation.run(1, 'buyer',  'Предоставить схему расстановки мебели в офисе',             '2026-02-01', 'in_progress');
-  insertObligation.run(2, 'seller', 'Изготовить и поставить мебель согласно спецификации',      '2026-05-15', 'in_progress');
-  insertObligation.run(2, 'buyer',  'Произвести авансовый платёж 30% до начала производства',   '2026-02-15', 'in_progress');
-  insertObligation.run(3, 'seller', 'Произвести и поставить мягкую мебель',                     '2026-07-31', 'pending');
-  insertObligation.run(3, 'buyer',  'Предоставить схемы расстановки',                           '2026-04-15', 'overdue');
-  insertObligation.run(3, 'seller', 'Выполнить монтаж после поставки',                          '2026-08-31', 'pending');
-  insertObligation.run(4, 'seller', 'Изготовить и поставить офисную мебель согласно спецификации','2026-05-20', 'in_progress');
-  insertObligation.run(4, 'buyer',  'Произвести авансовый платёж 30% до начала производства',   '2026-02-01', 'in_progress');
-  insertObligation.run(5, 'seller', 'Поставить и смонтировать конференц-мебель',                '2026-06-30', 'pending');
-  insertObligation.run(5, 'buyer',  'Предоставить поэтажный план помещений для расстановки',    '2026-03-15', 'overdue');
-  insertObligation.run(8, 'seller', 'Поставить складскую мебель согласно спецификации',         '2026-07-31', 'pending');
-  insertObligation.run(9, 'buyer',  'Устранить разногласия по спецификации',                    '2026-04-30', 'pending');
-})();
+  // ─────────────────────────────────────────────────────────
+  // ORDERS
+  // ─────────────────────────────────────────────────────────
+  await db.transaction(async (client) => {
+    const orders = [
+      [1,  'ЗАК-2026-0001', 1, 1, '2026-01-20', '2026-05-30', 'high',   'planned',             480000, null,                                      2],
+      [2,  'ЗАК-2026-0002', 3, 5, '2026-03-15', '2026-07-20', 'high',   'planned',            2100000, 'Приоритетный заказ — открытие гостиницы', 2],
+      [3,  'ЗАК-2026-0003', 4, 6, '2026-02-01', '2026-05-15', 'medium', 'planned',             560000, null,                                      2],
+      [4,  'ЗАК-2026-0004', 6, 7, '2026-03-05', '2026-07-01', 'low',    'planned',             320000, 'Договор на согласовании',                 2],
+      [5,  'ЗАК-2026-0005', 8, 6, '2026-03-10', '2026-07-15', 'low',    'planned',             215000, 'Договор приостановлен',                   2],
+      [6,  'ЗАК-2026-0006', 1, 1, '2026-01-25', '2026-04-25', 'high',   'in_production',       980000, null,                                      2],
+      [7,  'ЗАК-2026-0007', 2, 3, '2026-02-10', '2026-05-01', 'high',   'in_production',       720000, null,                                      2],
+      [8,  'ЗАК-2026-0008', 4, 6, '2026-02-20', '2026-06-10', 'medium', 'in_production',       840000, null,                                      2],
+      [9,  'ЗАК-2026-0009', 5, 9, '2026-03-01', '2026-05-30', 'high',   'in_production',       780000, null,                                      2],
+      [10, 'ЗАК-2026-0010', 3, 5, '2026-03-20', '2026-07-01', 'high',   'in_production',      1650000, 'Крупный заказ для гостиничной сети',       2],
+      [11, 'ЗАК-2026-0011', 4, 6, '2026-03-25', '2026-06-30', 'medium', 'in_production',       420000, null,                                      2],
+      [12, 'ЗАК-2026-0012', 1, 1, '2026-03-01', '2026-04-30', 'high',   'ready_for_shipment',  870000, null,                                      2],
+      [13, 'ЗАК-2026-0013', 5, 9, '2026-03-10', '2026-06-15', 'medium', 'ready_for_shipment', 1100000, null,                                      2],
+      [14, 'ЗАК-2026-0014', 2, 3, '2026-02-15', '2026-04-20', 'high',   'ready_for_shipment',  430000, null,                                      2],
+      [15, 'ЗАК-2026-0015', 4, 6, '2026-03-05', '2026-05-10', 'medium', 'ready_for_shipment',  280000, null,                                      2],
+      [16, 'ЗАК-2026-0016', 2, 3, '2026-02-20', '2026-04-05', 'medium', 'shipped',             280000, null,                                      2],
+      [17, 'ЗАК-2026-0017', 4, 6, '2026-02-25', '2026-04-10', 'high',   'shipped',             390000, null,                                      2],
+      [18, 'ЗАК-2026-0018', 1, 1, '2026-03-10', '2026-04-15', 'high',   'shipped',             425000, null,                                      2],
+      [19, 'ЗАК-2026-0019', 3, 5, '2026-03-15', '2026-04-18', 'medium', 'shipped',             310000, null,                                      2],
+      [20, 'ЗАК-2026-0020',12, 4, '2025-10-01', '2025-12-15', 'high',   'shipped',             380000, null,                                      2],
+      [21, 'ЗАК-2025-0021',10, 2, '2025-10-05', '2025-12-01', 'medium', 'completed',           195000, null,                                      2],
+      [22, 'ЗАК-2025-0022',11, 7, '2025-07-10', '2025-10-15', 'medium', 'completed',           185000, null,                                      2],
+      [23, 'ЗАК-2025-0023',11, 7, '2025-09-01', '2025-12-10', 'low',    'completed',           195000, null,                                      2],
+      [24, 'ЗАК-2025-0024',12, 4, '2025-04-10', '2025-07-30', 'high',   'completed',           370000, null,                                      2],
+      [25, 'ЗАК-2025-0025',10, 2, '2025-11-01', '2026-01-15', 'low',    'completed',           125000, null,                                      2],
+    ];
+    for (const r of orders) {
+      await client.run(
+        'INSERT INTO orders (id, number, contract_id, counterparty_id, date, shipment_deadline, priority, status, total_amount, notes, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+        r
+      );
+    }
+  });
+  await db.run("SELECT setval('orders_id_seq', (SELECT MAX(id) FROM orders))");
 
-// Contract versions
-const insertVersion = db.prepare(`INSERT INTO contract_versions (contract_id, version_num, date, author, changes) VALUES (?, ?, ?, ?, ?)`);
-db.transaction(() => {
-  insertVersion.run(1,  1, '2026-01-15', 'Петрова М.В.',  'Создание договора');
-  insertVersion.run(1,  2, '2026-02-10', 'Петрова М.В.',  'Изменение суммы договора с 2 700 000 до 2 850 000');
-  insertVersion.run(1,  3, '2026-03-05', 'Иванов А.С.',   'Добавлено условие о маркировке');
-  insertVersion.run(2,  1, '2026-02-01', 'Петрова М.В.',  'Создание договора');
-  insertVersion.run(2,  2, '2026-02-20', 'Петрова М.В.',  'Уточнение спецификации — Приложение №1 v2');
-  insertVersion.run(3,  1, '2026-03-10', 'Петрова М.В.',  'Создание договора');
-  insertVersion.run(4,  1, '2026-01-20', 'Петрова М.В.',  'Создание договора');
-  insertVersion.run(5,  1, '2026-02-10', 'Петрова М.В.',  'Создание договора');
-  insertVersion.run(6,  1, '2026-03-01', 'Петрова М.В.',  'Создание договора (черновик)');
-  insertVersion.run(7,  1, '2026-03-20', 'Петрова М.В.',  'Создание договора (черновик)');
-  insertVersion.run(8,  1, '2026-03-01', 'Петрова М.В.',  'Создание договора');
-  insertVersion.run(8,  2, '2026-03-18', 'Иванов А.С.',   'Договор приостановлен — разногласия по спецификации');
-  insertVersion.run(9,  1, '2026-02-25', 'Петрова М.В.',  'Создание договора');
-  insertVersion.run(9,  2, '2026-03-30', 'Иванов А.С.',   'Договор приостановлен по инициативе клиента');
-  insertVersion.run(10, 1, '2025-10-01', 'Петрова М.В.',  'Создание договора');
-  insertVersion.run(10, 2, '2026-04-01', 'Петрова М.В.',  'Договор выполнен — закрытие');
-  insertVersion.run(11, 1, '2025-07-01', 'Петрова М.В.',  'Создание договора');
-  insertVersion.run(11, 2, '2026-01-05', 'Петрова М.В.',  'Договор выполнен — все обязательства исполнены');
-  insertVersion.run(12, 1, '2025-04-01', 'Петрова М.В.',  'Создание договора');
-  insertVersion.run(12, 2, '2026-01-10', 'Петрова М.В.',  'Договор закрыт');
-})();
+  // ORDER ITEMS
+  await db.transaction(async (client) => {
+    const items = [
+      [1,  1,  'Шкаф 4-дверный',                   'SH-004',   20,  18000, 'Шкафы',          'planned',        0],
+      [2,  1,  'Стол переговорный 240×120',          'ST-240',    5,  24000, 'Столы',          'planned',        0],
+      [3,  2,  'Диван угловой «Люкс»',              'DV-001',   30,  35000, 'Диваны',         'planned',        0],
+      [4,  2,  'Кресло мягкое «Релакс»',            'KR-001',   60,  18000, 'Кресла мягкие',  'planned',        0],
+      [5,  3,  'Стол руководителя «Престиж»',       'ST-PR',    10,  28000, 'Столы',          'planned',        0],
+      [6,  3,  'Кресло руководителя «Директор»',    'KR-DIR',   10,  28000, 'Офисные кресла', 'planned',        0],
+      [7,  4,  'Стеллаж книжный офисный',           'SL-KN',    20,   8000, 'Стеллажи',       'planned',        0],
+      [8,  4,  'Стол рабочий 160×80',               'ST-160',   10,  12000, 'Столы',          'planned',        0],
+      [9,  5,  'Стеллаж металлический складской',   'SL-MET',   10,  14500, 'Стеллажи',       'planned',        0],
+      [10, 5,  'Шкаф инструментальный',             'SH-INS',    5,   9500, 'Шкафы',          'planned',        0],
+      [11, 6,  'Кресло офисное «Комфорт-М»',        'KO-001',   50,   8500, 'Офисные кресла', 'in_production',  25],
+      [12, 6,  'Стол рабочий 160×80',               'ST-160',   30,  12000, 'Столы',          'in_production',  10],
+      [13, 6,  'Тумба 3-ящичная',                   'TU-003',   30,   5500, 'Тумбы',          'planned',         0],
+      [14, 7,  'Стол рабочий угловой',              'ST-UG',    25,  16800, 'Столы',          'in_production',  10],
+      [15, 7,  'Кресло офисное «Менеджер»',         'KO-002',   25,  12000, 'Офисные кресла', 'produced',       15],
+      [16, 8,  'Шкаф-купе офисный 3-дверный',       'SH-KUP',   15,  22000, 'Шкафы',          'in_production',   0],
+      [17, 8,  'Тумба приставная',                  'TU-PR',    30,   6000, 'Тумбы',          'in_production',   0],
+      [18, 9,  'Стол переговорный 300×120',          'ST-PER',    5,  58000, 'Столы',          'in_production',   0],
+      [19, 9,  'Кресло конференц-зала «Спикер»',    'KO-KONF',  40,   7800, 'Офисные кресла', 'in_production',   0],
+      [20, 10, 'Диван 2-местный «Отель»',            'DV-HT2',   40,  18000, 'Диваны',         'in_production',   0],
+      [21, 10, 'Кресло мягкое «Холл»',              'KR-HALL',  80,   9500, 'Кресла мягкие',  'planned',         0],
+      [22, 10, 'Банкетка «Лобби»',                  'BNK-01',   30,   7000, 'Банкетки',       'planned',         0],
+      [23, 11, 'Стол руководителя «Бизнес»',        'ST-BIZ',    5,  32000, 'Столы',          'in_production',   0],
+      [24, 11, 'Кресло руководителя «Босс»',        'KR-BOSS',   5,  27000, 'Офисные кресла', 'planned',         0],
+      [25, 12, 'Кресло офисное «Комфорт-М»',        'KO-001',   60,   8500, 'Офисные кресла', 'produced',        0],
+      [26, 12, 'Стол рабочий 160×80',               'ST-160',   40,  12000, 'Столы',          'produced',        0],
+      [27, 13, 'Стол переговорный 240×100',          'ST-PER2',   8,  48000, 'Столы',          'produced',        0],
+      [28, 13, 'Тумба архивная',                    'TU-ARH',   20,   9500, 'Тумбы',          'produced',        0],
+      [29, 14, 'Стол рабочий угловой',              'ST-UG',    15,  16800, 'Столы',          'produced',        0],
+      [30, 14, 'Тумба 3-ящичная',                   'TU-003',   20,   5500, 'Тумбы',          'produced',        0],
+      [31, 15, 'Шкаф 2-дверный',                    'SH-002',   10,  14000, 'Шкафы',          'produced',        0],
+      [32, 15, 'Стеллаж офисный открытый',          'SL-OF',    10,   8000, 'Стеллажи',       'produced',        0],
+      [33, 16, 'Стол рабочий угловой',              'ST-UG',    15,  16800, 'Столы',          'done',           15],
+      [34, 16, 'Кресло офисное «Менеджер»',         'KO-002',   10,  12000, 'Офисные кресла', 'done',           10],
+      [35, 17, 'Диван «Классик» 2-местный',         'DV-KL2',   10,  22000, 'Диваны',         'done',           10],
+      [36, 17, 'Кресло мягкое «Уют»',               'KR-UYT',   15,  10000, 'Кресла мягкие',  'done',           15],
+      [37, 18, 'Кресло офисное «Комфорт-М»',        'KO-001',   30,   8500, 'Офисные кресла', 'done',           30],
+      [38, 18, 'Стол рабочий 160×80',               'ST-160',   15,  12000, 'Столы',          'done',           15],
+      [39, 18, 'Тумба 3-ящичная',                   'TU-003',   20,   5500, 'Тумбы',          'done',           20],
+      [40, 19, 'Диван «Модерн» угловой',            'DV-MOD',    5,  32000, 'Диваны',         'done',            5],
+      [41, 19, 'Пуф квадратный',                    'PUF-01',   20,   3500, 'Пуфы',           'done',           20],
+      [42, 20, 'Диван «Комфорт» 3-местный',         'DV-COM',   10,  25000, 'Диваны',         'done',           10],
+      [43, 20, 'Кресло мягкое «Отдых»',             'KR-ODH',   10,  13000, 'Кресла мягкие',  'done',           10],
+      [44, 21, 'Тумба прикроватная',                'TU-PKR',   15,   6500, 'Тумбы',          'done',           15],
+      [45, 21, 'Стол кухонный 120×60',              'ST-KU',    10,  10000, 'Столы',          'done',           10],
+      [46, 22, 'Кровать детская «Малыш»',           'KR-DET',   12,   8500, 'Кровати',        'done',           12],
+      [47, 22, 'Шкаф детский 2-дверный',            'SH-DET',   12,  11000, 'Шкафы',          'done',           12],
+      [48, 23, 'Стол детский «Учёба»',              'ST-DET',   15,   6500, 'Столы',          'done',           15],
+      [49, 23, 'Стул детский регулируемый',         'SK-DET',   15,   4500, 'Стулья',         'done',           15],
+      [50, 24, 'Диван угловой «Классик»',           'DV-KL',     8,  28000, 'Диваны',         'done',            8],
+      [51, 24, 'Кресло мягкое «Уют»',               'KR-UYT',   10,  10000, 'Кресла мягкие',  'done',           10],
+      [52, 25, 'Шкаф 2-дверный',                    'SH-002',    8,  14000, 'Шкафы',          'done',            8],
+      [53, 25, 'Тумба 3-ящичная',                   'TU-003',    5,   5500, 'Тумбы',          'done',            5],
+    ];
+    for (const r of items) {
+      await client.run(
+        'INSERT INTO order_items (id, order_id, name, article, quantity, price, category, status, shipped) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+        r
+      );
+    }
+  });
+  await db.run("SELECT setval('order_items_id_seq', (SELECT MAX(id) FROM order_items))");
+  console.log('✓ Orders seeded (25) with 53 items');
 
-// Contract files (metadata only — physical files not needed for UI tests)
-const insertFile = db.prepare(`
-  INSERT INTO contract_files (contract_id, original_name, stored_name, mimetype, size, uploaded_by, uploaded_by_name, uploaded_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-`);
-db.transaction(() => {
-  insertFile.run(1,  'Договор_ДГ-2026-001.pdf',     'c1_v1_contract.pdf',    'application/pdf',  245120, 2, 'Петрова М.В.', '2026-01-15 14:22');
-  insertFile.run(1,  'Спецификация_ДГ-2026-001.xlsx','c1_v1_spec.xlsx',       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 38912, 2, 'Петрова М.В.', '2026-01-15 14:25');
-  insertFile.run(2,  'Договор_ДГ-2026-002.docx',    'c2_v1_contract.docx',   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 184320, 2, 'Петрова М.В.', '2026-02-01 10:10');
-  insertFile.run(3,  'Договор_ДГ-2026-003.pdf',     'c3_v1_contract.pdf',    'application/pdf',  312000, 2, 'Петрова М.В.', '2026-03-10 11:00');
-  insertFile.run(3,  'Схема расстановки.jpg',        'c3_layout.jpg',         'image/jpeg',       512000, 2, 'Петрова М.В.', '2026-03-20 15:30');
-  insertFile.run(4,  'Договор_ДГ-2026-004.pdf',     'c4_v1_contract.pdf',    'application/pdf',  198000, 2, 'Петрова М.В.', '2026-01-20 09:45');
-  insertFile.run(5,  'Договор_ДГ-2026-005.pdf',     'c5_v1_contract.pdf',    'application/pdf',  220000, 2, 'Петрова М.В.', '2026-02-10 12:00');
-  insertFile.run(10, 'Договор_ДГ-2025-045_закрыт.pdf','c10_v2_contract.pdf', 'application/pdf',  178000, 2, 'Петрова М.В.', '2026-04-01 16:00');
-})();
-console.log('✓ Contracts seeded (12) with conditions, obligations, versions, files');
+  // ─────────────────────────────────────────────────────────
+  // SHIPMENTS
+  // ─────────────────────────────────────────────────────────
+  await db.transaction(async (client) => {
+    const shipments = [
+      [1,  18, 'ЗАК-2026-0018', 1, '2026-03-15', 'ТН-2026-0001', 255000, 'shipped', '2026-04-14', 255000, '2026-04-10', 'courier',       'г. Москва, ул. Складская, 8',           '2026-03-15'],
+      [2,  20, 'ЗАК-2026-0020', 4, '2025-11-20', 'ТН-2025-0082', 250000, 'shipped', '2026-01-05', 250000, '2026-01-04', 'pickup',        null,                                    '2025-11-20'],
+      [3,  21, 'ЗАК-2025-0021', 2, '2025-11-15', 'ТН-2025-0079', 195000, 'shipped', '2025-11-25', 195000, '2025-11-24', 'pickup',        null,                                    '2025-11-15'],
+      [4,  16, 'ЗАК-2026-0016', 3, '2026-03-28', 'ТН-2026-0015', 300000, 'shipped', '2026-04-11',      0, null,         'courier',       'г. Подольск, ул. Промышленная, 3',      '2026-03-28'],
+      [5,  19, 'ЗАК-2026-0019', 5, '2026-04-01', 'ТН-2026-0020', 310000, 'shipped', '2026-04-07',      0, null,         'our_transport', 'г. СПб, Индустриальный пр., 5',         '2026-04-01'],
+      [6,  17, 'ЗАК-2026-0017', 6, '2026-04-02', 'ТН-2026-0022', 390000, 'shipped', '2026-04-23',      0, null,         'courier',       'г. Казань, ул. Тихая, 9',               '2026-04-02'],
+      [7,  18, 'ЗАК-2026-0018', 1, '2026-04-05', 'ТН-2026-0025', 170000, 'shipped', '2026-05-05',      0, null,         'courier',       'г. Москва, ул. Складская, 8',           '2026-04-05'],
+      [8,  20, 'ЗАК-2026-0020', 4, '2026-04-08', 'ТН-2026-0028', 130000, 'shipped', '2026-05-23',      0, null,         'pickup',        null,                                    '2026-04-08'],
+      [9,  16, 'ЗАК-2026-0016', 3, '2026-04-02', 'ТН-2026-0029', 168000, 'shipped', '2026-04-16', 100000, null,         'courier',       'г. Подольск, ул. Промышленная, 3',      '2026-04-02'],
+      [10, 22, 'ЗАК-2025-0022', 7, '2025-09-20', 'ТН-2025-0041', 185000, 'shipped', '2025-10-04', 185000, '2025-10-03', 'pickup',        null,                                    '2025-09-20'],
+      [11, 23, 'ЗАК-2025-0023', 7, '2025-11-25', 'ТН-2025-0071', 195000, 'shipped', '2025-12-09', 195000, '2025-12-08', 'pickup',        null,                                    '2025-11-25'],
+      [12, 24, 'ЗАК-2025-0024', 4, '2025-06-15', 'ТН-2025-0020', 370000, 'shipped', '2025-06-29', 370000, '2025-06-28', 'our_transport', 'г. Самара, ул. Складская, 12',          '2025-06-15'],
+      [13, 25, 'ЗАК-2025-0025', 2, '2025-12-20', 'ТН-2025-0095', 125000, 'shipped', '2025-12-30', 125000, '2025-12-29', 'pickup',        null,                                    '2025-12-20'],
+      [14, 12, 'ЗАК-2026-0012', 1, '2026-04-15', 'ТН-2026-0035', 870000, 'shipped', '2026-05-15',      0, null,         'our_transport', 'г. Москва, ул. Складская, 8',           '2026-04-15'],
+      [15, 14, 'ЗАК-2026-0014', 3, '2026-04-12', 'ТН-2026-0031', 430000, 'shipped', '2026-04-26',      0, null,         'courier',       'г. Подольск, ул. Промышленная, 3',      '2026-04-12'],
+    ];
+    for (const r of shipments) {
+      await client.run(
+        'INSERT INTO shipments (id, order_id, order_number, counterparty_id, date, invoice_number, amount, status, payment_due_date, paid_amount, paid_date, delivery_type, delivery_address, scheduled_date) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',
+        r
+      );
+    }
+  });
+  await db.run("SELECT setval('shipments_id_seq', (SELECT MAX(id) FROM shipments))");
 
-// ─────────────────────────────────────────────────────────
-// ORDERS  (25: planned×5, in_production×6, ready_for_shipment×4, shipped×5, completed×5)
-// ─────────────────────────────────────────────────────────
-const insertOrder = db.prepare(`
-  INSERT INTO orders (id, number, contract_id, counterparty_id, date, shipment_deadline, priority, status, total_amount, notes, created_by)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
+  // Shipment items
+  await db.transaction(async (client) => {
+    const items = [
+      [1,  37, 'Кресло офисное «Комфорт-М»', 30,  8500],
+      [1,  38, 'Стол рабочий 160×80',         15, 12000],
+      [2,  42, 'Диван «Комфорт» 3-местный',   10, 25000],
+      [3,  44, 'Тумба прикроватная',           15,  6500],
+      [4,  33, 'Стол рабочий угловой',         15, 16800],
+      [4,  34, 'Кресло офисное «Менеджер»',   10, 12000],
+      [5,  40, 'Диван «Модерн» угловой',        5, 32000],
+      [5,  41, 'Пуф квадратный',               20,  3500],
+      [6,  35, 'Диван «Классик» 2-местный',    10, 22000],
+      [6,  36, 'Кресло мягкое «Уют»',          15, 10000],
+      [7,  39, 'Тумба 3-ящичная',              20,  5500],
+      [7,  37, 'Кресло офисное «Комфорт-М»',   5,  8500],
+      [8,  43, 'Кресло мягкое «Отдых»',        10, 13000],
+      [9,  14, 'Стол рабочий угловой',          10, 16800],
+      [10, 46, 'Кровать детская «Малыш»',       12,  8500],
+      [10, 47, 'Шкаф детский 2-дверный',        12, 11000],
+      [11, 48, 'Стол детский «Учёба»',          15,  6500],
+      [12, 50, 'Диван угловой «Классик»',        8, 28000],
+      [12, 51, 'Кресло мягкое «Уют»',           10, 10000],
+      [13, 52, 'Шкаф 2-дверный',                 8, 14000],
+      [14, 25, 'Кресло офисное «Комфорт-М»',   60,  8500],
+      [14, 26, 'Стол рабочий 160×80',           40, 12000],
+      [15, 29, 'Стол рабочий угловой',           15, 16800],
+      [15, 30, 'Тумба 3-ящичная',               20,  5500],
+    ];
+    for (const r of items) {
+      await client.run('INSERT INTO shipment_items (shipment_id, order_item_id, name, quantity, price) VALUES ($1,$2,$3,$4,$5)', r);
+    }
+  });
+  console.log('✓ Shipments seeded (15) with items');
 
-db.transaction(() => {
-  // PLANNED (5)
-  insertOrder.run(1,  'ЗАК-2026-0001', 1, 1, '2026-01-20', '2026-05-30', 'high',   'planned',            480000, null,                                       2);
-  insertOrder.run(2,  'ЗАК-2026-0002', 3, 5, '2026-03-15', '2026-07-20', 'high',   'planned',           2100000, 'Приоритетный заказ — открытие гостиницы',  2);
-  insertOrder.run(3,  'ЗАК-2026-0003', 4, 6, '2026-02-01', '2026-05-15', 'medium', 'planned',            560000, null,                                       2);
-  insertOrder.run(4,  'ЗАК-2026-0004', 6, 7, '2026-03-05', '2026-07-01', 'low',    'planned',            320000, 'Договор на согласовании',                  2);
-  insertOrder.run(5,  'ЗАК-2026-0005', 8, 6, '2026-03-10', '2026-07-15', 'low',    'planned',            215000, 'Договор приостановлен',                    2);
-  // IN_PRODUCTION (6)
-  insertOrder.run(6,  'ЗАК-2026-0006', 1, 1, '2026-01-25', '2026-04-25', 'high',   'in_production',      980000, null,                                       2);
-  insertOrder.run(7,  'ЗАК-2026-0007', 2, 3, '2026-02-10', '2026-05-01', 'high',   'in_production',      720000, null,                                       2);
-  insertOrder.run(8,  'ЗАК-2026-0008', 4, 6, '2026-02-20', '2026-06-10', 'medium', 'in_production',      840000, null,                                       2);
-  insertOrder.run(9,  'ЗАК-2026-0009', 5, 9, '2026-03-01', '2026-05-30', 'high',   'in_production',      780000, null,                                       2);
-  insertOrder.run(10, 'ЗАК-2026-0010', 3, 5, '2026-03-20', '2026-07-01', 'high',   'in_production',     1650000, 'Крупный заказ для гостиничной сети',        2);
-  insertOrder.run(11, 'ЗАК-2026-0011', 4, 6, '2026-03-25', '2026-06-30', 'medium', 'in_production',      420000, null,                                       2);
-  // READY_FOR_SHIPMENT (4)
-  insertOrder.run(12, 'ЗАК-2026-0012', 1, 1, '2026-03-01', '2026-04-30', 'high',   'ready_for_shipment', 870000, null,                                       2);
-  insertOrder.run(13, 'ЗАК-2026-0013', 5, 9, '2026-03-10', '2026-06-15', 'medium', 'ready_for_shipment',1100000, null,                                       2);
-  insertOrder.run(14, 'ЗАК-2026-0014', 2, 3, '2026-02-15', '2026-04-20', 'high',   'ready_for_shipment', 430000, null,                                       2);
-  insertOrder.run(15, 'ЗАК-2026-0015', 4, 6, '2026-03-05', '2026-05-10', 'medium', 'ready_for_shipment', 280000, null,                                       2);
-  // SHIPPED (5)
-  insertOrder.run(16, 'ЗАК-2026-0016', 2, 3, '2026-02-20', '2026-04-05', 'medium', 'shipped',            280000, null,                                       2);
-  insertOrder.run(17, 'ЗАК-2026-0017', 4, 6, '2026-02-25', '2026-04-10', 'high',   'shipped',            390000, null,                                       2);
-  insertOrder.run(18, 'ЗАК-2026-0018', 1, 1, '2026-03-10', '2026-04-15', 'high',   'shipped',            425000, null,                                       2);
-  insertOrder.run(19, 'ЗАК-2026-0019', 3, 5, '2026-03-15', '2026-04-18', 'medium', 'shipped',            310000, null,                                       2);
-  insertOrder.run(20, 'ЗАК-2026-0020', 12,4, '2025-10-01', '2025-12-15', 'high',   'shipped',            380000, null,                                       2);
-  // COMPLETED (5)
-  insertOrder.run(21, 'ЗАК-2025-0021', 10,2, '2025-10-05', '2025-12-01', 'medium', 'completed',          195000, null,                                       2);
-  insertOrder.run(22, 'ЗАК-2025-0022', 11,7, '2025-07-10', '2025-10-15', 'medium', 'completed',          185000, null,                                       2);
-  insertOrder.run(23, 'ЗАК-2025-0023', 11,7, '2025-09-01', '2025-12-10', 'low',    'completed',          195000, null,                                       2);
-  insertOrder.run(24, 'ЗАК-2025-0024', 12,4, '2025-04-10', '2025-07-30', 'high',   'completed',          370000, null,                                       2);
-  insertOrder.run(25, 'ЗАК-2025-0025', 10,2, '2025-11-01', '2026-01-15', 'low',    'completed',          125000, null,                                       2);
-})();
+  // ─────────────────────────────────────────────────────────
+  // PAYMENTS
+  // ─────────────────────────────────────────────────────────
+  await db.transaction(async (client) => {
+    const payments = [
+      [1,  1,  1,  255000, '2026-04-14', '2026-04-10', 'paid',    'ТН-2026-0001', 0,   0],
+      [2,  2,  4,  250000, '2026-01-05', '2026-01-04', 'paid',    'ТН-2025-0082', 0,   0],
+      [3,  3,  2,  195000, '2025-11-25', '2025-11-24', 'paid',    'ТН-2025-0079', 0,   0],
+      [4,  10, 7,  185000, '2025-10-04', '2025-10-03', 'paid',    'ТН-2025-0041', 0,   0],
+      [5,  11, 7,  195000, '2025-12-09', '2025-12-08', 'paid',    'ТН-2025-0071', 0,   0],
+      [6,  4,  3,  300000, '2026-04-11', null,         'overdue', 'ТН-2026-0015', 5,  1500],
+      [7,  5,  5,  310000, '2026-04-07', null,         'overdue', 'ТН-2026-0020', 9,  2790],
+      [8,  9,  3,   68000, '2026-04-16', null,         'overdue', 'ТН-2026-0029', 2,   680],
+      [9,  12, 4,  370000, '2025-06-29', '2025-06-28', 'paid',    'ТН-2025-0020', 0,   0],
+      [10, 6,  6,  390000, '2026-04-23', null,         'pending', 'ТН-2026-0022', 0,   0],
+      [11, 7,  1,  170000, '2026-05-05', null,         'pending', 'ТН-2026-0025', 0,   0],
+      [12, 8,  4,  130000, '2026-05-23', null,         'pending', 'ТН-2026-0028', 0,   0],
+      [13, 14, 1,  870000, '2026-05-15', null,         'pending', 'ТН-2026-0035', 0,   0],
+      [14, 15, 3,  430000, '2026-04-26', null,         'pending', 'ТН-2026-0031', 0,   0],
+    ];
+    for (const r of payments) {
+      await client.run(
+        'INSERT INTO payments (id, shipment_id, counterparty_id, amount, due_date, paid_date, status, invoice_number, penalty_days, penalty_amount) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+        r
+      );
+    }
+  });
+  await db.run("SELECT setval('payments_id_seq', (SELECT MAX(id) FROM payments))");
+  console.log('✓ Payments seeded (14: 5 paid, 4 overdue, 5 pending)');
 
-// ─────────────────────────────────────────────────────────
-// ORDER ITEMS
-// ─────────────────────────────────────────────────────────
-const insertOrderItem = db.prepare(`
-  INSERT INTO order_items (id, order_id, name, article, quantity, price, category, status, shipped)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
+  // ─────────────────────────────────────────────────────────
+  // CLAIMS
+  // ─────────────────────────────────────────────────────────
+  await db.transaction(async (client) => {
+    const claims = [
+      [1, 'РЕК-2026-001', 1,  1, 1, 37, '2026-03-20', '2026-04-20', 'Обнаружен дефект обивки на 5 из 30 кресел «Комфорт-М» (потёртости на боковине)', 'in_review', 'Козлов Д.В.', null, 1, null, 2],
+      [2, 'РЕК-2026-002', 2,  4, 3, 33, '2026-04-04', '2026-05-04', 'Несоответствие размеров 3 угловых столов: заявлено 160×90, доставлено 150×85', 'open', 'Новиков А.И.', null, 0, 6, 2],
+      [3, 'РЕК-2026-003', 4,  6, 6, 16, '2026-03-10', '2026-04-10', 'Повреждение упаковки 2 шкафов-купе при транспортировке, царапины на фасаде', 'in_review', 'Козлов Д.В.', null, 1, 10, 2],
+      [4, 'РЕК-2026-004', 3,  5, 5, 40, '2026-03-25', '2026-04-25', 'Неполная комплектация: не хватает 2 пуфов из 20 заявленных', 'open', 'Петрова М.В.', null, 0, 7, 2],
+      [5, 'РЕК-2025-015',10,  3, 2, 44, '2025-11-20', '2025-12-20', 'Несоответствие цвета тумбы: заказано «Дуб молочный», поставлено «Дуб беленый»', 'resolved', 'Козлов Д.В.', 'Произведена замена 15 тумб в течение 10 рабочих дней', 0, null, 2],
+      [6, 'РЕК-2025-010',12, 12, 4, 50, '2025-07-10', '2025-08-10', 'Скрип дивана «Классик» через 2 недели эксплуатации — дефект каркаса', 'closed', 'Новиков А.И.', 'Выполнен гарантийный ремонт, претензий нет', 0, null, 2],
+    ];
+    for (const r of claims) {
+      await client.run(
+        'INSERT INTO claims (id, number, contract_id, shipment_id, counterparty_id, order_item_id, date, deadline, description, status, responsible, resolution, pause_payments, affected_payment_id, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)',
+        r
+      );
+    }
+  });
+  await db.run("SELECT setval('claims_id_seq', (SELECT MAX(id) FROM claims))");
+  console.log('✓ Claims seeded (6)');
 
-db.transaction(() => {
-  // Order 1 — planned
-  insertOrderItem.run(1,  1,  'Шкаф 4-дверный',                    'SH-004',  20,  18000, 'Шкафы',            'planned',       0);
-  insertOrderItem.run(2,  1,  'Стол переговорный 240×120',          'ST-240',   5,  24000, 'Столы',            'planned',       0);
-  // Order 2 — planned
-  insertOrderItem.run(3,  2,  'Диван угловой «Люкс»',              'DV-001',  30,  35000, 'Диваны',           'planned',       0);
-  insertOrderItem.run(4,  2,  'Кресло мягкое «Релакс»',            'KR-001',  60,  18000, 'Кресла мягкие',    'planned',       0);
-  // Order 3 — planned
-  insertOrderItem.run(5,  3,  'Стол руководителя «Престиж»',       'ST-PR',   10,  28000, 'Столы',            'planned',       0);
-  insertOrderItem.run(6,  3,  'Кресло руководителя «Директор»',    'KR-DIR',  10,  28000, 'Офисные кресла',   'planned',       0);
-  // Order 4 — planned
-  insertOrderItem.run(7,  4,  'Стеллаж книжный офисный',           'SL-KN',   20,   8000, 'Стеллажи',         'planned',       0);
-  insertOrderItem.run(8,  4,  'Стол рабочий 160×80',               'ST-160',  10,  12000, 'Столы',            'planned',       0);
-  // Order 5 — planned (suspended contract)
-  insertOrderItem.run(9,  5,  'Стеллаж металлический складской',   'SL-MET',  10,  14500, 'Стеллажи',         'planned',       0);
-  insertOrderItem.run(10, 5,  'Шкаф инструментальный',             'SH-INS',   5,   9500, 'Шкафы',            'planned',       0);
-  // Order 6 — in_production
-  insertOrderItem.run(11, 6,  'Кресло офисное «Комфорт-М»',        'KO-001',  50,   8500, 'Офисные кресла',   'in_production', 25);
-  insertOrderItem.run(12, 6,  'Стол рабочий 160×80',               'ST-160',  30,  12000, 'Столы',            'in_production', 10);
-  insertOrderItem.run(13, 6,  'Тумба 3-ящичная',                   'TU-003',  30,   5500, 'Тумбы',            'planned',        0);
-  // Order 7 — in_production
-  insertOrderItem.run(14, 7,  'Стол рабочий угловой',              'ST-UG',   25,  16800, 'Столы',            'in_production', 10);
-  insertOrderItem.run(15, 7,  'Кресло офисное «Менеджер»',         'KO-002',  25,  12000, 'Офисные кресла',   'produced',      15);
-  // Order 8 — in_production
-  insertOrderItem.run(16, 8,  'Шкаф-купе офисный 3-дверный',       'SH-KUP',  15,  22000, 'Шкафы',            'in_production', 0);
-  insertOrderItem.run(17, 8,  'Тумба приставная',                   'TU-PR',   30,   6000, 'Тумбы',            'in_production', 0);
-  // Order 9 — in_production
-  insertOrderItem.run(18, 9,  'Стол переговорный 300×120',          'ST-PER',   5,  58000, 'Столы',            'in_production', 0);
-  insertOrderItem.run(19, 9,  'Кресло конференц-зала «Спикер»',    'KO-KONF', 40,   7800, 'Офисные кресла',   'in_production', 0);
-  // Order 10 — in_production
-  insertOrderItem.run(20, 10, 'Диван 2-местный «Отель»',            'DV-HT2',  40,  18000, 'Диваны',           'in_production', 0);
-  insertOrderItem.run(21, 10, 'Кресло мягкое «Холл»',              'KR-HALL', 80,   9500, 'Кресла мягкие',    'planned',        0);
-  insertOrderItem.run(22, 10, 'Банкетка «Лобби»',                   'BNK-01',  30,   7000, 'Банкетки',         'planned',        0);
-  // Order 11 — in_production
-  insertOrderItem.run(23, 11, 'Стол руководителя «Бизнес»',        'ST-BIZ',   5,  32000, 'Столы',            'in_production', 0);
-  insertOrderItem.run(24, 11, 'Кресло руководителя «Босс»',        'KR-BOSS',  5,  27000, 'Офисные кресла',   'planned',        0);
-  // Order 12 — ready_for_shipment
-  insertOrderItem.run(25, 12, 'Кресло офисное «Комфорт-М»',        'KO-001',  60,   8500, 'Офисные кресла',   'produced',       0);
-  insertOrderItem.run(26, 12, 'Стол рабочий 160×80',               'ST-160',  40,  12000, 'Столы',            'produced',       0);
-  // Order 13 — ready_for_shipment
-  insertOrderItem.run(27, 13, 'Стол переговорный 240×100',          'ST-PER2',  8,  48000, 'Столы',            'produced',       0);
-  insertOrderItem.run(28, 13, 'Тумба архивная',                    'TU-ARH',  20,   9500, 'Тумбы',            'produced',       0);
-  // Order 14 — ready_for_shipment
-  insertOrderItem.run(29, 14, 'Стол рабочий угловой',              'ST-UG',   15,  16800, 'Столы',            'produced',       0);
-  insertOrderItem.run(30, 14, 'Тумба 3-ящичная',                   'TU-003',  20,   5500, 'Тумбы',            'produced',       0);
-  // Order 15 — ready_for_shipment
-  insertOrderItem.run(31, 15, 'Шкаф 2-дверный',                    'SH-002',  10,  14000, 'Шкафы',            'produced',       0);
-  insertOrderItem.run(32, 15, 'Стеллаж офисный открытый',          'SL-OF',   10,   8000, 'Стеллажи',         'produced',       0);
-  // Order 16 — shipped
-  insertOrderItem.run(33, 16, 'Стол рабочий угловой',              'ST-UG',   15,  16800, 'Столы',            'done',          15);
-  insertOrderItem.run(34, 16, 'Кресло офисное «Менеджер»',         'KO-002',  10,  12000, 'Офисные кресла',   'done',          10);
-  // Order 17 — shipped
-  insertOrderItem.run(35, 17, 'Диван «Классик» 2-местный',         'DV-KL2',  10,  22000, 'Диваны',           'done',          10);
-  insertOrderItem.run(36, 17, 'Кресло мягкое «Уют»',               'KR-UYT',  15,  10000, 'Кресла мягкие',    'done',          15);
-  // Order 18 — shipped
-  insertOrderItem.run(37, 18, 'Кресло офисное «Комфорт-М»',        'KO-001',  30,   8500, 'Офисные кресла',   'done',          30);
-  insertOrderItem.run(38, 18, 'Стол рабочий 160×80',               'ST-160',  15,  12000, 'Столы',            'done',          15);
-  insertOrderItem.run(39, 18, 'Тумба 3-ящичная',                   'TU-003',  20,   5500, 'Тумбы',            'done',          20);
-  // Order 19 — shipped
-  insertOrderItem.run(40, 19, 'Диван «Модерн» угловой',            'DV-MOD',   5,  32000, 'Диваны',           'done',           5);
-  insertOrderItem.run(41, 19, 'Пуф квадратный',                    'PUF-01',  20,   3500, 'Пуфы',             'done',          20);
-  // Order 20 — shipped
-  insertOrderItem.run(42, 20, 'Диван «Комфорт» 3-местный',         'DV-COM',  10,  25000, 'Диваны',           'done',          10);
-  insertOrderItem.run(43, 20, 'Кресло мягкое «Отдых»',             'KR-ODH',  10,  13000, 'Кресла мягкие',    'done',          10);
-  // Order 21-25 — completed
-  insertOrderItem.run(44, 21, 'Тумба прикроватная',                'TU-PKR',  15,   6500, 'Тумбы',            'done',          15);
-  insertOrderItem.run(45, 21, 'Стол кухонный 120×60',              'ST-KU',   10,  10000, 'Столы',            'done',          10);
-  insertOrderItem.run(46, 22, 'Кровать детская «Малыш»',           'KR-DET',  12,   8500, 'Кровати',          'done',          12);
-  insertOrderItem.run(47, 22, 'Шкаф детский 2-дверный',            'SH-DET',  12,  11000, 'Шкафы',            'done',          12);
-  insertOrderItem.run(48, 23, 'Стол детский «Учёба»',              'ST-DET',  15,   6500, 'Столы',            'done',          15);
-  insertOrderItem.run(49, 23, 'Стул детский регулируемый',         'SK-DET',  15,   4500, 'Стулья',           'done',          15);
-  insertOrderItem.run(50, 24, 'Диван угловой «Классик»',           'DV-KL',    8,  28000, 'Диваны',           'done',           8);
-  insertOrderItem.run(51, 24, 'Кресло мягкое «Уют»',               'KR-UYT',  10,  10000, 'Кресла мягкие',    'done',          10);
-  insertOrderItem.run(52, 25, 'Шкаф 2-дверный',                    'SH-002',   8,  14000, 'Шкафы',            'done',           8);
-  insertOrderItem.run(53, 25, 'Тумба 3-ящичная',                   'TU-003',   5,   5500, 'Тумбы',            'done',           5);
-})();
-console.log('✓ Orders seeded (25) with 53 items');
+  // ─────────────────────────────────────────────────────────
+  // PRODUCTION TASKS
+  // ─────────────────────────────────────────────────────────
+  await db.transaction(async (client) => {
+    const tasks = [
+      [1,  6,  'ЗАК-2026-0006', 'Кресло офисное «Комфорт-М» (50 шт)',       4, '2026-03-22', '2026-04-11', 50, 'in_progress', 'Козлов Д.В.',  'high',   '#3b82f6'],
+      [2,  6,  'ЗАК-2026-0006', 'Стол рабочий 160×80 (30 шт)',              3, '2026-04-01', '2026-04-18', 20, 'in_progress', 'Козлов Д.В.',  'high',   '#3b82f6'],
+      [3,  6,  'ЗАК-2026-0006', 'Тумба 3-ящичная (30 шт)',                  1, '2026-04-12', '2026-04-25',  0, 'planned',     'Козлов Д.В.',  'high',   '#3b82f6'],
+      [4,  7,  'ЗАК-2026-0007', 'Стол рабочий угловой (25 шт)',             3, '2026-03-27', '2026-04-14', 55, 'in_progress', 'Козлов Д.В.',  'high',   '#10b981'],
+      [5,  7,  'ЗАК-2026-0007', 'Кресло «Менеджер» (25 шт)',                2, '2026-03-29', '2026-04-09', 80, 'in_progress', 'Козлов Д.В.',  'high',   '#10b981'],
+      [6,  8,  'ЗАК-2026-0008', 'Шкаф-купе офисный 3-дв (15 шт)',           1, '2026-04-01', '2026-04-22', 35, 'in_progress', 'Козлов Д.В.',  'medium', '#f59e0b'],
+      [7,  8,  'ЗАК-2026-0008', 'Тумба приставная (30 шт)',                 2, '2026-04-05', '2026-04-20', 15, 'in_progress', 'Козлов Д.В.',  'medium', '#f59e0b'],
+      [8,  9,  'ЗАК-2026-0009', 'Стол переговорный 300×120 (5 шт)',         3, '2026-03-25', '2026-04-25', 60, 'in_progress', 'Козлов Д.В.',  'high',   '#ef4444'],
+      [9,  9,  'ЗАК-2026-0009', 'Кресло конференц «Спикер» (40 шт)',        4, '2026-03-28', '2026-04-18', 70, 'in_progress', 'Козлов Д.В.',  'high',   '#ef4444'],
+      [10, 10, 'ЗАК-2026-0010', 'Диван 2-местный «Отель» (40 шт)',          2, '2026-04-01', '2026-05-15', 25, 'in_progress', 'Козлов Д.В.',  'high',   '#8b5cf6'],
+      [11, 10, 'ЗАК-2026-0010', 'Кресло мягкое «Холл» (80 шт)',             4, '2026-04-08', '2026-05-22',  5, 'in_progress', 'Козлов Д.В.',  'high',   '#8b5cf6'],
+      [12, 10, 'ЗАК-2026-0010', 'Банкетка «Лобби» (30 шт)',                 1, '2026-04-20', '2026-06-01',  0, 'planned',     'Козлов Д.В.',  'medium', '#8b5cf6'],
+      [13, 11, 'ЗАК-2026-0011', 'Стол руководителя «Бизнес» (5 шт)',        3, '2026-04-02', '2026-04-28', 40, 'in_progress', 'Козлов Д.В.',  'medium', '#ec4899'],
+      [14, 11, 'ЗАК-2026-0011', 'Кресло руководителя «Босс» (5 шт)',        4, '2026-04-10', '2026-05-05',  0, 'planned',     'Козлов Д.В.',  'medium', '#ec4899'],
+      [15, 1,  'ЗАК-2026-0001', 'Шкаф 4-дверный (20 шт)',                   1, '2026-04-26', '2026-05-21',  0, 'planned',     'Козлов Д.В.',  'medium', '#64748b'],
+      [16, 1,  'ЗАК-2026-0001', 'Стол переговорный 240×120 (5 шт)',          3, '2026-05-01', '2026-05-25',  0, 'planned',     'Козлов Д.В.',  'medium', '#64748b'],
+      [17, 2,  'ЗАК-2026-0002', 'Диван угловой «Люкс» (30 шт)',              2, '2026-05-06', '2026-06-20',  0, 'planned',     'Козлов Д.В.',  'high',   '#8b5cf6'],
+      [18, 2,  'ЗАК-2026-0002', 'Кресло мягкое «Релакс» (60 шт)',            4, '2026-05-10', '2026-06-28',  0, 'planned',     'Козлов Д.В.',  'high',   '#8b5cf6'],
+      [19, 3,  'ЗАК-2026-0003', 'Стол руководителя «Престиж» (10 шт)',       3, '2026-04-28', '2026-05-20',  0, 'planned',     'Козлов Д.В.',  'medium', '#06b6d4'],
+      [20, 3,  'ЗАК-2026-0003', 'Кресло руководителя «Директор» (10 шт)',    4, '2026-05-01', '2026-05-22',  0, 'planned',     'Козлов Д.В.',  'medium', '#06b6d4'],
+    ];
+    for (const r of tasks) {
+      await client.run(
+        'INSERT INTO production_tasks (id, order_id, order_number, name, line_id, start_date, end_date, progress, status, responsible, priority, color) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+        r
+      );
+    }
+  });
+  await db.run("SELECT setval('production_tasks_id_seq', (SELECT MAX(id) FROM production_tasks))");
+  console.log('✓ Production tasks seeded (20)');
 
-// ─────────────────────────────────────────────────────────
-// SHIPMENTS  (15 отгрузок с разными типами доставки)
-// ─────────────────────────────────────────────────────────
-const insertShipment = db.prepare(`
-  INSERT INTO shipments (id, order_id, order_number, counterparty_id, date, invoice_number, amount, status, payment_due_date, paid_amount, paid_date, delivery_type, delivery_address, scheduled_date)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
+  // ─────────────────────────────────────────────────────────
+  // DRIVERS & DELIVERY ROUTES
+  // ─────────────────────────────────────────────────────────
+  await db.transaction(async (client) => {
+    const drivers = [
+      [1, 'Громов В.А.',    '+7 916 111-22-33', 'Газель Next ГАЗ А21R22 (А123ВС77)', 1],
+      [2, 'Тихонов К.С.',   '+7 916 222-33-44', 'Газель Next ГАЗ А21R22 (В456КМ77)', 1],
+      [3, 'Береснев Е.Н.',  '+7 916 333-44-55', 'Фургон MAN TGE (С789НО77)',          1],
+      [4, 'Шаповалов Д.Г.', '+7 916 444-55-66', 'МАЗ 4371 (Е012РС77)',               1],
+      [5, 'Лукьянов С.В.',  '+7 916 555-66-77', 'Газель БИЗНЕС (Т345УФ77)',           0],
+    ];
+    for (const r of drivers) {
+      await client.run('INSERT INTO drivers (id, name, phone, vehicle, active) VALUES ($1,$2,$3,$4,$5)', r);
+    }
+  });
+  await db.run("SELECT setval('drivers_id_seq', (SELECT MAX(id) FROM drivers))");
 
-db.transaction(() => {
-  // Полностью оплаченные
-  insertShipment.run(1,  18, 'ЗАК-2026-0018', 1, '2026-03-15', 'ТН-2026-0001', 255000,  'shipped', '2026-04-14', 255000, '2026-04-10', 'courier',  'г. Москва, ул. Складская, 8',         '2026-03-15');
-  insertShipment.run(2,  20, 'ЗАК-2026-0020', 4, '2025-11-20', 'ТН-2025-0082',  250000,  'shipped', '2026-01-05', 250000, '2026-01-04', 'pickup',   null,                                   '2025-11-20');
-  insertShipment.run(3,  21, 'ЗАК-2025-0021', 2, '2025-11-15', 'ТН-2025-0079',  195000,  'shipped', '2025-11-25', 195000, '2025-11-24', 'pickup',   null,                                   '2025-11-15');
-  // Просроченные (overdue)
-  insertShipment.run(4,  16, 'ЗАК-2026-0016', 3, '2026-03-28', 'ТН-2026-0015',  300000,  'shipped', '2026-04-11',      0, null,         'courier',  'г. Подольск, ул. Промышленная, 3',    '2026-03-28');
-  insertShipment.run(5,  19, 'ЗАК-2026-0019', 5, '2026-04-01', 'ТН-2026-0020',  310000,  'shipped', '2026-04-07',      0, null,         'our_transport', 'г. СПб, Индустриальный пр., 5', '2026-04-01');
-  // Ожидающие оплаты (pending)
-  insertShipment.run(6,  17, 'ЗАК-2026-0017', 6, '2026-04-02', 'ТН-2026-0022',  390000,  'shipped', '2026-04-23',      0, null,         'courier',  'г. Казань, ул. Тихая, 9',             '2026-04-02');
-  insertShipment.run(7,  18, 'ЗАК-2026-0018', 1, '2026-04-05', 'ТН-2026-0025',  170000,  'shipped', '2026-05-05',      0, null,         'courier',  'г. Москва, ул. Складская, 8',         '2026-04-05');
-  insertShipment.run(8,  20, 'ЗАК-2026-0020', 4, '2026-04-08', 'ТН-2026-0028',  130000,  'shipped', '2026-05-23',      0, null,         'pickup',   null,                                   '2026-04-08');
-  // Частично оплаченные
-  insertShipment.run(9,  16, 'ЗАК-2026-0016', 3, '2026-04-02', 'ТН-2026-0029',  168000,  'shipped', '2026-04-16', 100000, null,         'courier',  'г. Подольск, ул. Промышленная, 3',    '2026-04-02');
-  // Завершённые заказы
-  insertShipment.run(10, 22, 'ЗАК-2025-0022', 7, '2025-09-20', 'ТН-2025-0041',  185000,  'shipped', '2025-10-04', 185000, '2025-10-03', 'pickup',   null,                                   '2025-09-20');
-  insertShipment.run(11, 23, 'ЗАК-2025-0023', 7, '2025-11-25', 'ТН-2025-0071',  195000,  'shipped', '2025-12-09', 195000, '2025-12-08', 'pickup',   null,                                   '2025-11-25');
-  insertShipment.run(12, 24, 'ЗАК-2025-0024', 4, '2025-06-15', 'ТН-2025-0020',  370000,  'shipped', '2025-06-29', 370000, '2025-06-28', 'our_transport', 'г. Самара, ул. Складская, 12', '2025-06-15');
-  insertShipment.run(13, 25, 'ЗАК-2025-0025', 2, '2025-12-20', 'ТН-2025-0095',  125000,  'shipped', '2025-12-30', 125000, '2025-12-29', 'pickup',   null,                                   '2025-12-20');
-  // Готовые к отгрузке — запланированные
-  insertShipment.run(14, 12, 'ЗАК-2026-0012', 1, '2026-04-15', 'ТН-2026-0035',  870000,  'shipped', '2026-05-15',      0, null,         'our_transport', 'г. Москва, ул. Складская, 8',  '2026-04-15');
-  insertShipment.run(15, 14, 'ЗАК-2026-0014', 3, '2026-04-12', 'ТН-2026-0031',  430000,  'shipped', '2026-04-26',      0, null,         'courier',  'г. Подольск, ул. Промышленная, 3',    '2026-04-12');
-})();
+  await db.transaction(async (client) => {
+    await client.run('INSERT INTO delivery_routes (id, driver_id, route_date, status, notes) VALUES ($1,$2,$3,$4,$5)', [1, 1, '2026-03-15', 'completed', 'Москва, две точки доставки']);
+    await client.run('INSERT INTO route_shipments (route_id, shipment_id, delivery_order) VALUES ($1,$2,$3)', [1, 1, 1]);
 
-// Shipment items
-const insertShipmentItem = db.prepare(`INSERT INTO shipment_items (shipment_id, order_item_id, name, quantity, price) VALUES (?, ?, ?, ?, ?)`);
-db.transaction(() => {
-  insertShipmentItem.run(1,  37, 'Кресло офисное «Комфорт-М»', 30,  8500);
-  insertShipmentItem.run(1,  38, 'Стол рабочий 160×80',         15, 12000);
-  insertShipmentItem.run(2,  42, 'Диван «Комфорт» 3-местный',   10, 25000);
-  insertShipmentItem.run(3,  44, 'Тумба прикроватная',          15,  6500);
-  insertShipmentItem.run(4,  33, 'Стол рабочий угловой',        15, 16800);
-  insertShipmentItem.run(4,  34, 'Кресло офисное «Менеджер»',  10, 12000);
-  insertShipmentItem.run(5,  40, 'Диван «Модерн» угловой',       5, 32000);
-  insertShipmentItem.run(5,  41, 'Пуф квадратный',              20,  3500);
-  insertShipmentItem.run(6,  35, 'Диван «Классик» 2-местный',   10, 22000);
-  insertShipmentItem.run(6,  36, 'Кресло мягкое «Уют»',         15, 10000);
-  insertShipmentItem.run(7,  39, 'Тумба 3-ящичная',             20,  5500);
-  insertShipmentItem.run(7,  37, 'Кресло офисное «Комфорт-М»',  5,  8500);
-  insertShipmentItem.run(8,  43, 'Кресло мягкое «Отдых»',       10, 13000);
-  insertShipmentItem.run(9,  14, 'Стол рабочий угловой',        10, 16800);
-  insertShipmentItem.run(10, 46, 'Кровать детская «Малыш»',     12,  8500);
-  insertShipmentItem.run(10, 47, 'Шкаф детский 2-дверный',      12, 11000);
-  insertShipmentItem.run(11, 48, 'Стол детский «Учёба»',        15,  6500);
-  insertShipmentItem.run(12, 50, 'Диван угловой «Классик»',      8, 28000);
-  insertShipmentItem.run(12, 51, 'Кресло мягкое «Уют»',         10, 10000);
-  insertShipmentItem.run(13, 52, 'Шкаф 2-дверный',               8, 14000);
-  insertShipmentItem.run(14, 25, 'Кресло офисное «Комфорт-М»',  60,  8500);
-  insertShipmentItem.run(14, 26, 'Стол рабочий 160×80',         40, 12000);
-  insertShipmentItem.run(15, 29, 'Стол рабочий угловой',        15, 16800);
-  insertShipmentItem.run(15, 30, 'Тумба 3-ящичная',             20,  5500);
-})();
-console.log('✓ Shipments seeded (15) with items');
+    await client.run('INSERT INTO delivery_routes (id, driver_id, route_date, status, notes) VALUES ($1,$2,$3,$4,$5)', [2, 2, '2026-04-02', 'completed', 'Подольск + Казань (2 отгрузки)']);
+    await client.run('INSERT INTO route_shipments (route_id, shipment_id, delivery_order) VALUES ($1,$2,$3)', [2, 4, 1]);
+    await client.run('INSERT INTO route_shipments (route_id, shipment_id, delivery_order) VALUES ($1,$2,$3)', [2, 6, 2]);
 
-// ─────────────────────────────────────────────────────────
-// PAYMENTS  (14 платежей: paid×5, overdue×4, pending×5)
-// ─────────────────────────────────────────────────────────
-const insertPayment = db.prepare(`
-  INSERT INTO payments (id, shipment_id, counterparty_id, amount, due_date, paid_date, status, invoice_number, penalty_days, penalty_amount)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
+    await client.run('INSERT INTO delivery_routes (id, driver_id, route_date, status, notes) VALUES ($1,$2,$3,$4,$5)', [3, 1, '2026-04-15', 'planned', 'Москва — крупная поставка ЗАК-0012']);
+    await client.run('INSERT INTO route_shipments (route_id, shipment_id, delivery_order) VALUES ($1,$2,$3)', [3, 14, 1]);
 
-db.transaction(() => {
-  // PAID (5)
-  insertPayment.run(1,  1,  1,  255000, '2026-04-14', '2026-04-10', 'paid',    'ТН-2026-0001', 0,   0);
-  insertPayment.run(2,  2,  4,  250000, '2026-01-05', '2026-01-04', 'paid',    'ТН-2025-0082', 0,   0);
-  insertPayment.run(3,  3,  2,  195000, '2025-11-25', '2025-11-24', 'paid',    'ТН-2025-0079', 0,   0);
-  insertPayment.run(4,  10, 7,  185000, '2025-10-04', '2025-10-03', 'paid',    'ТН-2025-0041', 0,   0);
-  insertPayment.run(5,  11, 7,  195000, '2025-12-09', '2025-12-08', 'paid',    'ТН-2025-0071', 0,   0);
-  // OVERDUE (4)
-  insertPayment.run(6,  4,  3,  300000, '2026-04-11', null,         'overdue', 'ТН-2026-0015', 5,  1500);
-  insertPayment.run(7,  5,  5,  310000, '2026-04-07', null,         'overdue', 'ТН-2026-0020', 9,  2790);
-  insertPayment.run(8,  9,  3,   68000, '2026-04-16', null,         'overdue', 'ТН-2026-0029', 2,   680);  // частичный остаток
-  insertPayment.run(9,  12, 4,  370000, '2025-06-29', '2025-06-28', 'paid',    'ТН-2025-0020', 0,   0);
-  // PENDING (5)
-  insertPayment.run(10, 6,  6,  390000, '2026-04-23', null,         'pending', 'ТН-2026-0022', 0,   0);
-  insertPayment.run(11, 7,  1,  170000, '2026-05-05', null,         'pending', 'ТН-2026-0025', 0,   0);
-  insertPayment.run(12, 8,  4,  130000, '2026-05-23', null,         'pending', 'ТН-2026-0028', 0,   0);
-  insertPayment.run(13, 14, 1,  870000, '2026-05-15', null,         'pending', 'ТН-2026-0035', 0,   0);
-  insertPayment.run(14, 15, 3,  430000, '2026-04-26', null,         'pending', 'ТН-2026-0031', 0,   0);
-})();
-console.log('✓ Payments seeded (14: 5 paid, 4 overdue, 5 pending)');
+    await client.run('INSERT INTO delivery_routes (id, driver_id, route_date, status, notes) VALUES ($1,$2,$3,$4,$5)', [4, 3, '2026-04-12', 'in_progress', 'Подольск — АО «ОфисПлюс»']);
+    await client.run('INSERT INTO route_shipments (route_id, shipment_id, delivery_order) VALUES ($1,$2,$3)', [4, 15, 1]);
 
-// ─────────────────────────────────────────────────────────
-// CLAIMS  (6: open×2, in_review×2, resolved×1, closed×1)
-// ─────────────────────────────────────────────────────────
-const insertClaim = db.prepare(`
-  INSERT INTO claims (id, number, contract_id, shipment_id, counterparty_id, order_item_id, date, deadline, description, status, responsible, resolution, pause_payments, affected_payment_id, created_by)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
+    await client.run('INSERT INTO delivery_routes (id, driver_id, route_date, status, notes) VALUES ($1,$2,$3,$4,$5)', [5, 2, '2026-04-20', 'planned', 'Москва — «МебельТорг»']);
+    await client.run('INSERT INTO route_shipments (route_id, shipment_id, delivery_order) VALUES ($1,$2,$3)', [5, 7, 1]);
+  });
+  await db.run("SELECT setval('delivery_routes_id_seq', (SELECT MAX(id) FROM delivery_routes))");
+  console.log('✓ Drivers (5) and delivery routes (5) seeded');
 
-db.transaction(() => {
-  insertClaim.run(1, 'РЕК-2026-001', 1,  1, 1, 37, '2026-03-20', '2026-04-20',
-    'Обнаружен дефект обивки на 5 из 30 кресел «Комфорт-М» (потёртости на боковине)',
-    'in_review', 'Козлов Д.В.', null, 1, null, 2);
-  insertClaim.run(2, 'РЕК-2026-002', 2,  4, 3, 33, '2026-04-04', '2026-05-04',
-    'Несоответствие размеров 3 угловых столов: заявлено 160×90, доставлено 150×85',
-    'open', 'Новиков А.И.', null, 0, 6, 2);
-  insertClaim.run(3, 'РЕК-2026-003', 4,  6, 6, 16, '2026-03-10', '2026-04-10',
-    'Повреждение упаковки 2 шкафов-купе при транспортировке, царапины на фасаде',
-    'in_review', 'Козлов Д.В.', null, 1, 10, 2);
-  insertClaim.run(4, 'РЕК-2026-004', 3,  5, 5, 40, '2026-03-25', '2026-04-25',
-    'Неполная комплектация: не хватает 2 пуфов из 20 заявленных',
-    'open', 'Петрова М.В.', null, 0, 7, 2);
-  insertClaim.run(5, 'РЕК-2025-015', 10, 3, 2, 44, '2025-11-20', '2025-12-20',
-    'Несоответствие цвета тумбы: заказано «Дуб молочный», поставлено «Дуб беленый»',
-    'resolved', 'Козлов Д.В.', 'Произведена замена 15 тумб в течение 10 рабочих дней', 0, null, 2);
-  insertClaim.run(6, 'РЕК-2025-010', 12, 12,4, 50, '2025-07-10', '2025-08-10',
-    'Скрип дивана «Классик» через 2 недели эксплуатации — дефект каркаса',
-    'closed', 'Новиков А.И.', 'Выполнен гарантийный ремонт, претензий нет', 0, null, 2);
-})();
-console.log('✓ Claims seeded (6)');
+  // ─────────────────────────────────────────────────────────
+  // NOTIFICATIONS
+  // ─────────────────────────────────────────────────────────
+  await db.transaction(async (client) => {
+    const notifs = [
+      [1, 'warning', 'Просрочка платежа',         'АО «ОфисПлюс» — просрочка 5 дней по счёту ТН-2026-0015',             '2026-04-11', 0],
+      [1, 'warning', 'Просрочка платежа',         'ЗАО «ГрандМебель» — просрочка 9 дней по счёту ТН-2026-0020',          '2026-04-11', 0],
+      [1, 'info',    'Договор истекает',           'ДГ-2026-002 истекает 30.09.2026 — рассмотрите пролонгацию',            '2026-04-09', 0],
+      [1, 'success', 'Новый договор подписан',     'Договор ДГ-2026-005 с ПАО «РосОфис» активирован',                    '2026-04-08', 1],
+      [3, 'warning', 'Просрочка платежа',         'АО «ОфисПлюс» — просрочка 5 дней по счёту ТН-2026-0015 (300 000 ₽)',  '2026-04-11', 0],
+      [3, 'warning', 'Просрочка платежа',         'ЗАО «ГрандМебель» — просрочка 9 дней по счёту ТН-2026-0020 (310 000 ₽)', '2026-04-11', 0],
+      [3, 'success', 'Оплата получена',            'ООО «МебельТорг» оплатил счёт ТН-2026-0001 на 255 000 ₽',            '2026-04-10', 1],
+      [3, 'info',    'Платёж ожидается',           'ООО «СтильМебель» — срок оплаты по ТН-2026-0022 23.04.2026',          '2026-04-10', 0],
+      [7, 'warning', 'Просрочки платежей (2 шт)', '2 просроченных платежа на общую сумму 610 000 ₽',                     '2026-04-11', 0],
+      [7, 'info',    'Рекламация требует решения', 'РЕК-2026-001 — срок рассмотрения истекает 20.04.2026',                '2026-04-10', 0],
+      [7, 'success', 'Крупный заказ выполнен',     'Заказ ЗАК-2025-0022 завершён и оплачен',                              '2025-10-04', 1],
+      [5, 'warning', 'Срок поставки под угрозой', 'Заказ ЗАК-2026-0006 — дедлайн 25.04, прогресс задачи кресел 50%',    '2026-04-10', 0],
+      [5, 'info',    'Новый заказ в производство', 'Заказ ЗАК-2026-0011 передан в производство',                         '2026-03-25', 1],
+      [2, 'warning', 'Обязательство просрочено',  'ДГ-2026-003 — клиент не предоставил схемы расстановки (срок 15.04)',  '2026-04-10', 0],
+      [2, 'info',    'Рекламация открыта',         'РЕК-2026-002 — несоответствие размеров столов от АО «ОфисПлюс»',     '2026-04-04', 1],
+    ];
+    for (const r of notifs) {
+      await client.run('INSERT INTO notifications (user_id, type, title, text, date, read) VALUES ($1,$2,$3,$4,$5,$6)', r);
+    }
+  });
+  console.log('✓ Notifications seeded (15)');
 
-// ─────────────────────────────────────────────────────────
-// PRODUCTION TASKS  (20 задач по всем заказам в производстве)
-// ─────────────────────────────────────────────────────────
-const insertTask = db.prepare(`
-  INSERT INTO production_tasks (id, order_id, order_number, name, line_id, start_date, end_date, progress, status, responsible, priority, color)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
+  // ─────────────────────────────────────────────────────────
+  // CHAT MESSAGES
+  // ─────────────────────────────────────────────────────────
+  await db.transaction(async (client) => {
+    const messages = [
+      [1,  1, 1, 'client',  'Алексеев В.П.',  'Добрый день! Когда ожидается отгрузка второй партии кресел?',                        '2026-04-05 10:15', 1],
+      [2,  1, 1, 'manager', 'Петрова М.В.',   'Добрый день, Виктор Петрович! Вторая партия запланирована на 10-12 апреля.',          '2026-04-05 11:30', 1],
+      [3,  1, 1, 'client',  'Алексеев В.П.',  'Отлично, ждём. И уточните — будет ли сертификат качества на эту партию?',             '2026-04-05 12:00', 1],
+      [4,  1, 1, 'manager', 'Петрова М.В.',   'Да, сертификаты входят в комплект поставки по условиям договора.',                    '2026-04-05 14:20', 1],
+      [5,  2, 3, 'client',  'Куликов А.Б.',   'Прошу прояснить ситуацию с рекламацией РЕК-2026-002. Когда получим замену столов?',   '2026-04-06 09:30', 1],
+      [6,  2, 3, 'manager', 'Петрова М.В.',   'Куликов А.Б., рекламация принята, передана в производство. Срок замены — 2 недели.',  '2026-04-06 10:45', 1],
+      [7,  2, 3, 'client',  'Куликов А.Б.',   'Хорошо, ждём. Также уточните срок по остатку заказа ЗАК-2026-0016.',                  '2026-04-07 08:15', 0],
+      [8,  3, 5, 'client',  'Фёдорова Н.А.', 'Прошу подтвердить сроки поставки мягкой мебели. У нас открытие гостиницы в августе.','2026-04-06 09:00', 1],
+      [9,  3, 5, 'manager', 'Петрова М.В.',   'Наталья Александровна, производство идёт по плану, срок поставки — июль 2026.',       '2026-04-06 11:00', 1],
+      [10, 3, 5, 'client',  'Фёдорова Н.А.', 'Также напоминаю: схемы расстановки вышлем на следующей неделе — задержка с дизайнером.','2026-04-07 10:00', 0],
+      [11, 4, 6, 'manager', 'Петрова М.В.',   'Добрый день, Ринат Рашидович! Ваш заказ ЗАК-2026-0008 принят в производство.',        '2026-03-26 09:00', 1],
+      [12, 4, 6, 'client',  'Гарипов Р.Р.',   'Спасибо! Подскажите, когда можно ожидать предварительную дату отгрузки?',             '2026-03-26 14:30', 0],
+    ];
+    for (const r of messages) {
+      await client.run(
+        'INSERT INTO chat_messages (id, contract_id, counterparty_id, from_type, author, text, date, read) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+        r
+      );
+    }
+  });
+  await db.run("SELECT setval('chat_messages_id_seq', (SELECT MAX(id) FROM chat_messages))");
+  console.log('✓ Chat messages seeded (12)');
 
-db.transaction(() => {
-  // Order 6 — in_production (синий)
-  insertTask.run(1,  6,  'ЗАК-2026-0006', 'Кресло офисное «Комфорт-М» (50 шт)',       4, '2026-03-22', '2026-04-11', 50, 'in_progress', 'Козлов Д.В.',   'high',   '#3b82f6');
-  insertTask.run(2,  6,  'ЗАК-2026-0006', 'Стол рабочий 160×80 (30 шт)',              3, '2026-04-01', '2026-04-18', 20, 'in_progress', 'Козлов Д.В.',   'high',   '#3b82f6');
-  insertTask.run(3,  6,  'ЗАК-2026-0006', 'Тумба 3-ящичная (30 шт)',                  1, '2026-04-12', '2026-04-25',  0, 'planned',     'Козлов Д.В.',   'high',   '#3b82f6');
-  // Order 7 — in_production (зелёный)
-  insertTask.run(4,  7,  'ЗАК-2026-0007', 'Стол рабочий угловой (25 шт)',             3, '2026-03-27', '2026-04-14', 55, 'in_progress', 'Козлов Д.В.',   'high',   '#10b981');
-  insertTask.run(5,  7,  'ЗАК-2026-0007', 'Кресло «Менеджер» (25 шт)',                2, '2026-03-29', '2026-04-09', 80, 'in_progress', 'Козлов Д.В.',   'high',   '#10b981');
-  // Order 8 — in_production (жёлтый)
-  insertTask.run(6,  8,  'ЗАК-2026-0008', 'Шкаф-купе офисный 3-дв (15 шт)',           1, '2026-04-01', '2026-04-22', 35, 'in_progress', 'Козлов Д.В.',   'medium', '#f59e0b');
-  insertTask.run(7,  8,  'ЗАК-2026-0008', 'Тумба приставная (30 шт)',                 2, '2026-04-05', '2026-04-20', 15, 'in_progress', 'Козлов Д.В.',   'medium', '#f59e0b');
-  // Order 9 — in_production (оранжевый)
-  insertTask.run(8,  9,  'ЗАК-2026-0009', 'Стол переговорный 300×120 (5 шт)',         3, '2026-03-25', '2026-04-25', 60, 'in_progress', 'Козлов Д.В.',   'high',   '#ef4444');
-  insertTask.run(9,  9,  'ЗАК-2026-0009', 'Кресло конференц «Спикер» (40 шт)',        4, '2026-03-28', '2026-04-18', 70, 'in_progress', 'Козлов Д.В.',   'high',   '#ef4444');
-  // Order 10 — in_production (фиолетовый)
-  insertTask.run(10, 10, 'ЗАК-2026-0010', 'Диван 2-местный «Отель» (40 шт)',          2, '2026-04-01', '2026-05-15', 25, 'in_progress', 'Козлов Д.В.',   'high',   '#8b5cf6');
-  insertTask.run(11, 10, 'ЗАК-2026-0010', 'Кресло мягкое «Холл» (80 шт)',             4, '2026-04-08', '2026-05-22',  5, 'in_progress', 'Козлов Д.В.',   'high',   '#8b5cf6');
-  insertTask.run(12, 10, 'ЗАК-2026-0010', 'Банкетка «Лобби» (30 шт)',                 1, '2026-04-20', '2026-06-01',  0, 'planned',     'Козлов Д.В.',   'medium', '#8b5cf6');
-  // Order 11 — in_production (розовый)
-  insertTask.run(13, 11, 'ЗАК-2026-0011', 'Стол руководителя «Бизнес» (5 шт)',        3, '2026-04-02', '2026-04-28', 40, 'in_progress', 'Козлов Д.В.',   'medium', '#ec4899');
-  insertTask.run(14, 11, 'ЗАК-2026-0011', 'Кресло руководителя «Босс» (5 шт)',        4, '2026-04-10', '2026-05-05',  0, 'planned',     'Козлов Д.В.',   'medium', '#ec4899');
-  // Planned orders
-  insertTask.run(15, 1,  'ЗАК-2026-0001', 'Шкаф 4-дверный (20 шт)',                   1, '2026-04-26', '2026-05-21',  0, 'planned',     'Козлов Д.В.',   'medium', '#64748b');
-  insertTask.run(16, 1,  'ЗАК-2026-0001', 'Стол переговорный 240×120 (5 шт)',          3, '2026-05-01', '2026-05-25',  0, 'planned',     'Козлов Д.В.',   'medium', '#64748b');
-  insertTask.run(17, 2,  'ЗАК-2026-0002', 'Диван угловой «Люкс» (30 шт)',              2, '2026-05-06', '2026-06-20',  0, 'planned',     'Козлов Д.В.',   'high',   '#8b5cf6');
-  insertTask.run(18, 2,  'ЗАК-2026-0002', 'Кресло мягкое «Релакс» (60 шт)',            4, '2026-05-10', '2026-06-28',  0, 'planned',     'Козлов Д.В.',   'high',   '#8b5cf6');
-  insertTask.run(19, 3,  'ЗАК-2026-0003', 'Стол руководителя «Престиж» (10 шт)',       3, '2026-04-28', '2026-05-20',  0, 'planned',     'Козлов Д.В.',   'medium', '#06b6d4');
-  insertTask.run(20, 3,  'ЗАК-2026-0003', 'Кресло руководителя «Директор» (10 шт)',    4, '2026-05-01', '2026-05-22',  0, 'planned',     'Козлов Д.В.',   'medium', '#06b6d4');
-})();
-console.log('✓ Production tasks seeded (20)');
+  // ─────────────────────────────────────────────────────────
+  // AUDIT LOG
+  // ─────────────────────────────────────────────────────────
+  await db.transaction(async (client) => {
+    const entries = [
+      [1, 'Иванов А.С.',   'Создан пользователь Морозова Е.А.',                           'Пользователь', 6,    '192.168.1.10', '2026-03-01 09:00'],
+      [2, 'Петрова М.В.',  'Создан договор ДГ-2026-001',                                  'Договор',      1,    '192.168.1.15', '2026-01-15 14:22'],
+      [2, 'Петрова М.В.',  'Изменена сумма договора ДГ-2026-001: 2 700 000 → 2 850 000',  'Договор',      1,    '192.168.1.15', '2026-02-10 11:00'],
+      [2, 'Петрова М.В.',  'Создан договор ДГ-2026-002',                                  'Договор',      2,    '192.168.1.15', '2026-02-01 10:10'],
+      [2, 'Петрова М.В.',  'Создан договор ДГ-2026-003',                                  'Договор',      3,    '192.168.1.15', '2026-03-10 14:22'],
+      [2, 'Петрова М.В.',  'Создан заказ ЗАК-2026-0006',                                  'Заказ',        6,    '192.168.1.15', '2026-01-25 09:30'],
+      [2, 'Петрова М.В.',  'Создан заказ ЗАК-2026-0007',                                  'Заказ',        7,    '192.168.1.15', '2026-02-10 10:00'],
+      [4, 'Козлов Д.В.',   'Запущено производство по задаче: Кресло «Комфорт-М»',         'Производство', 1,    '192.168.1.22', '2026-03-22 08:00'],
+      [4, 'Козлов Д.В.',   'Обновлён прогресс задачи: Кресло «Комфорт-М» 50%',            'Производство', 1,    '192.168.1.22', '2026-04-06 08:15'],
+      [4, 'Козлов Д.В.',   'Обновлён прогресс задачи: Стол переговорный 300×120 — 60%',   'Производство', 8,    '192.168.1.22', '2026-04-07 09:00'],
+      [2, 'Петрова М.В.',  'Зарегистрирована отгрузка ТН-2026-0001',                      'Отгрузка',     1,    '192.168.1.15', '2026-03-15 16:30'],
+      [3, 'Сидоров П.К.',  'Зарегистрирован платёж по счёту ТН-2026-0001',                'Платёж',       1,    '192.168.1.18', '2026-04-10 10:00'],
+      [2, 'Петрова М.В.',  'Зарегистрирована рекламация РЕК-2026-001',                    'Рекламация',   1,    '192.168.1.15', '2026-03-20 15:00'],
+      [2, 'Петрова М.В.',  'Зарегистрирована рекламация РЕК-2026-002',                    'Рекламация',   2,    '192.168.1.15', '2026-04-04 11:30'],
+      [5, 'Новиков А.И.',  'Статус рекламации РЕК-2026-001 изменён: open → in_review',    'Рекламация',   1,    '192.168.1.20', '2026-03-22 09:00'],
+      [1, 'Иванов А.С.',   'Договор ДГ-2026-008 переведён в статус: suspended',           'Договор',      8,    '127.0.0.1',    '2026-03-18 14:00'],
+      [1, 'Иванов А.С.',   'Договор ДГ-2026-009 переведён в статус: suspended',           'Договор',      9,    '127.0.0.1',    '2026-03-30 11:00'],
+      [2, 'Петрова М.В.',  'Статус заказа ЗАК-2026-0012 изменён: ready_for_shipment',     'Заказ',        12,   '192.168.1.15', '2026-04-08 10:00'],
+      [2, 'Петрова М.В.',  'Статус заказа ЗАК-2026-0013 изменён: ready_for_shipment',     'Заказ',        13,   '192.168.1.15', '2026-04-09 09:30'],
+      [2, 'Петрова М.В.',  'Загружен файл для договора ДГ-2026-001',                      'Договор',      1,    '192.168.1.15', '2026-01-15 14:25'],
+      [1, 'Иванов А.С.',   'Создан маршрут доставки на 15.04.2026',                       'Маршрут',      3,    '127.0.0.1',    '2026-04-11 09:00'],
+      [1, 'Иванов А.С.',   'Назначен водитель Громов В.А. на маршрут №3',                 'Маршрут',      3,    '127.0.0.1',    '2026-04-11 09:05'],
+      [3, 'Сидоров П.К.',  'Начислена пеня по платежу ТН-2026-0015 — 1 500 ₽',           'Платёж',       6,    '192.168.1.18', '2026-04-11 10:00'],
+      [3, 'Сидоров П.К.',  'Начислена пеня по платежу ТН-2026-0020 — 2 790 ₽',           'Платёж',       7,    '192.168.1.18', '2026-04-11 10:05'],
+      [6, 'Морозова Е.А.', 'Выгружен аналитический отчёт за Q1 2026',                    'Отчёт',        null, '192.168.1.25', '2026-04-10 17:00'],
+    ];
+    for (const r of entries) {
+      await client.run(
+        'INSERT INTO audit_log (user_id, user_name, action, entity_type, entity_id, ip, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        r
+      );
+    }
+  });
+  console.log('✓ Audit log seeded (25)');
 
-// ─────────────────────────────────────────────────────────
-// DRIVERS & DELIVERY ROUTES
-// ─────────────────────────────────────────────────────────
-const insertDriver = db.prepare(`INSERT INTO drivers (id, name, phone, vehicle, active) VALUES (?, ?, ?, ?, ?)`);
-db.transaction(() => {
-  insertDriver.run(1, 'Громов В.А.',     '+7 916 111-22-33', 'Газель Next ГАЗ А21R22 (А123ВС77)',  1);
-  insertDriver.run(2, 'Тихонов К.С.',    '+7 916 222-33-44', 'Газель Next ГАЗ А21R22 (В456КМ77)',  1);
-  insertDriver.run(3, 'Береснев Е.Н.',   '+7 916 333-44-55', 'Фургон MAN TGE (С789НО77)',           1);
-  insertDriver.run(4, 'Шаповалов Д.Г.',  '+7 916 444-55-66', 'МАЗ 4371 (Е012РС77)',                1);
-  insertDriver.run(5, 'Лукьянов С.В.',   '+7 916 555-66-77', 'Газель БИЗНЕС (Т345УФ77)',            0); // неактивный
-})();
+  console.log('\n✅ Database seeded successfully!');
+  console.log('──────────────────────────────────────────');
+  console.log('📊 Test data summary:');
+  console.log('   Users:            8  (all roles covered)');
+  console.log('   Counterparties:   10');
+  console.log('   Contracts:        12 (active×5, draft×2, suspended×2, completed×3)');
+  console.log('   Orders:           25 (planned×5, in_production×6, ready×4, shipped×5, completed×5)');
+  console.log('   Order items:      53');
+  console.log('   Shipments:        15 (with delivery types: pickup, courier, our_transport)');
+  console.log('   Payments:         14 (paid×6, overdue×3, pending×5)');
+  console.log('   Claims:            6 (open×2, in_review×2, resolved×1, closed×1)');
+  console.log('   Production tasks: 20 (in_progress×12, planned×8)');
+  console.log('   Drivers:           5 (4 active, 1 inactive)');
+  console.log('   Delivery routes:   5 (completed×2, in_progress×1, planned×2)');
+  console.log('   Notifications:    15 (for users 1,2,3,5,7)');
+  console.log('   Chat messages:    12 (across 4 contracts)');
+  console.log('   Audit entries:    25');
+  console.log('──────────────────────────────────────────');
+  console.log('🔑 Login: <email> / password123');
+  console.log('   admin@furniture.ru     — admin');
+  console.log('   sales@furniture.ru     — sales_manager');
+  console.log('   accountant@furniture.ru— accountant');
+  console.log('   prod@furniture.ru      — production_specialist');
+  console.log('   prodhead@furniture.ru  — production_head');
+  console.log('   analyst@furniture.ru   — analyst');
+  console.log('   director@furniture.ru  — director');
+  console.log('   guest@furniture.ru     — guest');
 
-const insertRoute = db.prepare(`INSERT INTO delivery_routes (id, driver_id, route_date, status, notes) VALUES (?, ?, ?, ?, ?)`);
-const insertRouteShipment = db.prepare(`INSERT INTO route_shipments (route_id, shipment_id, delivery_order) VALUES (?, ?, ?)`);
-db.transaction(() => {
-  // Маршрут 1 — выполнен
-  insertRoute.run(1, 1, '2026-03-15', 'completed', 'Москва, две точки доставки');
-  insertRouteShipment.run(1, 1, 1);
-  // Маршрут 2 — выполнен
-  insertRoute.run(2, 2, '2026-04-02', 'completed', 'Подольск + Казань (2 отгрузки)');
-  insertRouteShipment.run(2, 4, 1);
-  insertRouteShipment.run(2, 6, 2);
-  // Маршрут 3 — запланирован
-  insertRoute.run(3, 1, '2026-04-15', 'planned', 'Москва — крупная поставка ЗАК-0012');
-  insertRouteShipment.run(3, 14, 1);
-  // Маршрут 4 — в процессе
-  insertRoute.run(4, 3, '2026-04-12', 'in_progress', 'Подольск — АО «ОфисПлюс»');
-  insertRouteShipment.run(4, 15, 1);
-  // Маршрут 5 — запланирован
-  insertRoute.run(5, 2, '2026-04-20', 'planned', 'Москва — «МебельТорг»');
-  insertRouteShipment.run(5, 7, 1);
-})();
-console.log('✓ Drivers (5) and delivery routes (5) seeded');
-
-// ─────────────────────────────────────────────────────────
-// NOTIFICATIONS  (15 для разных пользователей)
-// ─────────────────────────────────────────────────────────
-const insertNotif = db.prepare(`
-  INSERT INTO notifications (user_id, type, title, text, date, read) VALUES (?, ?, ?, ?, ?, ?)
-`);
-
-const notifs = [
-  // Для администратора (1)
-  [1, 'warning', 'Просрочка платежа',          'АО «ОфисПлюс» — просрочка 5 дней по счёту ТН-2026-0015',            '2026-04-11', 0],
-  [1, 'warning', 'Просрочка платежа',          'ЗАО «ГрандМебель» — просрочка 9 дней по счёту ТН-2026-0020',         '2026-04-11', 0],
-  [1, 'info',    'Договор истекает',            'ДГ-2026-002 истекает 30.09.2026 — рассмотрите пролонгацию',           '2026-04-09', 0],
-  [1, 'success', 'Новый договор подписан',      'Договор ДГ-2026-005 с ПАО «РосОфис» активирован',                   '2026-04-08', 1],
-  // Для бухгалтера (3)
-  [3, 'warning', 'Просрочка платежа',          'АО «ОфисПлюс» — просрочка 5 дней по счёту ТН-2026-0015 (300 000 ₽)', '2026-04-11', 0],
-  [3, 'warning', 'Просрочка платежа',          'ЗАО «ГрандМебель» — просрочка 9 дней по счёту ТН-2026-0020 (310 000 ₽)', '2026-04-11', 0],
-  [3, 'success', 'Оплата получена',             'ООО «МебельТорг» оплатил счёт ТН-2026-0001 на 255 000 ₽',           '2026-04-10', 1],
-  [3, 'info',    'Платёж ожидается',            'ООО «СтильМебель» — срок оплаты по ТН-2026-0022 23.04.2026',         '2026-04-10', 0],
-  // Для директора (7)
-  [7, 'warning', 'Просрочки платежей (2 шт)',  '2 просроченных платежа на общую сумму 610 000 ₽',                    '2026-04-11', 0],
-  [7, 'info',    'Рекламация требует решения',  'РЕК-2026-001 — срок рассмотрения истекает 20.04.2026',               '2026-04-10', 0],
-  [7, 'success', 'Крупный заказ выполнен',      'Заказ ЗАК-2025-0022 завершён и оплачен',                             '2025-10-04', 1],
-  // Для нач. производства (5)
-  [5, 'warning', 'Срок поставки под угрозой',  'Заказ ЗАК-2026-0006 — дедлайн 25.04, прогресс задачи кресел 50%',   '2026-04-10', 0],
-  [5, 'info',    'Новый заказ в производство',  'Заказ ЗАК-2026-0011 передан в производство',                        '2026-03-25', 1],
-  // Для менеджера по продажам (2)
-  [2, 'warning', 'Обязательство просрочено',   'ДГ-2026-003 — клиент не предоставил схемы расстановки (срок 15.04)', '2026-04-10', 0],
-  [2, 'info',    'Рекламация открыта',          'РЕК-2026-002 — несоответствие размеров столов от АО «ОфисПлюс»',    '2026-04-04', 1],
-];
-
-db.transaction(() => {
-  for (const n of notifs) insertNotif.run(...n);
-})();
-console.log('✓ Notifications seeded (15)');
-
-// ─────────────────────────────────────────────────────────
-// CHAT MESSAGES  (диалоги по нескольким договорам)
-// ─────────────────────────────────────────────────────────
-const insertChat = db.prepare(`
-  INSERT INTO chat_messages (id, contract_id, counterparty_id, from_type, author, text, date, read)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-`);
-
-db.transaction(() => {
-  // Договор 1 — ООО «МебельТорг» (диалог из 4 сообщений)
-  insertChat.run(1,  1, 1, 'client',  'Алексеев В.П.',  'Добрый день! Когда ожидается отгрузка второй партии кресел?',                         '2026-04-05 10:15', 1);
-  insertChat.run(2,  1, 1, 'manager', 'Петрова М.В.',   'Добрый день, Виктор Петрович! Вторая партия запланирована на 10-12 апреля.',           '2026-04-05 11:30', 1);
-  insertChat.run(3,  1, 1, 'client',  'Алексеев В.П.',  'Отлично, ждём. И уточните — будет ли сертификат качества на эту партию?',              '2026-04-05 12:00', 1);
-  insertChat.run(4,  1, 1, 'manager', 'Петрова М.В.',   'Да, сертификаты входят в комплект поставки по условиям договора.',                     '2026-04-05 14:20', 1);
-  // Договор 2 — АО «ОфисПлюс» (диалог из 3 сообщений)
-  insertChat.run(5,  2, 3, 'client',  'Куликов А.Б.',   'Прошу прояснить ситуацию с рекламацией РЕК-2026-002. Когда получим замену столов?',    '2026-04-06 09:30', 1);
-  insertChat.run(6,  2, 3, 'manager', 'Петрова М.В.',   'Куликов А.Б., рекламация принята, передана в производство. Срок замены — 2 недели.',   '2026-04-06 10:45', 1);
-  insertChat.run(7,  2, 3, 'client',  'Куликов А.Б.',   'Хорошо, ждём. Также уточните срок по остатку заказа ЗАК-2026-0016.',                   '2026-04-07 08:15', 0);
-  // Договор 3 — ЗАО «ГрандМебель» (диалог из 3 сообщений)
-  insertChat.run(8,  3, 5, 'client',  'Фёдорова Н.А.', 'Прошу подтвердить сроки поставки мягкой мебели. У нас открытие гостиницы в августе.', '2026-04-06 09:00', 1);
-  insertChat.run(9,  3, 5, 'manager', 'Петрова М.В.',   'Наталья Александровна, производство идёт по плану, срок поставки — июль 2026.',        '2026-04-06 11:00', 1);
-  insertChat.run(10, 3, 5, 'client',  'Фёдорова Н.А.', 'Также напоминаю: схемы расстановки вышлем на следующей неделе — задержка с дизайнером.','2026-04-07 10:00', 0);
-  // Договор 4 — ООО «СтильМебель» (2 сообщения)
-  insertChat.run(11, 4, 6, 'manager', 'Петрова М.В.',   'Добрый день, Ринат Рашидович! Ваш заказ ЗАК-2026-0008 принят в производство.',         '2026-03-26 09:00', 1);
-  insertChat.run(12, 4, 6, 'client',  'Гарипов Р.Р.',   'Спасибо! Подскажите, когда можно ожидать предварительную дату отгрузки?',              '2026-03-26 14:30', 0);
-})();
-console.log('✓ Chat messages seeded (12)');
-
-// ─────────────────────────────────────────────────────────
-// AUDIT LOG  (25 записей — история всех операций)
-// ─────────────────────────────────────────────────────────
-const insertAudit = db.prepare(`
-  INSERT INTO audit_log (user_id, user_name, action, entity_type, entity_id, ip, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-`);
-
-db.transaction(() => {
-  insertAudit.run(1, 'Иванов А.С.',   'Создан пользователь Морозова Е.А.',                  'Пользователь', 6,  '192.168.1.10', '2026-03-01 09:00');
-  insertAudit.run(2, 'Петрова М.В.',  'Создан договор ДГ-2026-001',                         'Договор',      1,  '192.168.1.15', '2026-01-15 14:22');
-  insertAudit.run(2, 'Петрова М.В.',  'Изменена сумма договора ДГ-2026-001: 2 700 000 → 2 850 000', 'Договор', 1, '192.168.1.15', '2026-02-10 11:00');
-  insertAudit.run(2, 'Петрова М.В.',  'Создан договор ДГ-2026-002',                         'Договор',      2,  '192.168.1.15', '2026-02-01 10:10');
-  insertAudit.run(2, 'Петрова М.В.',  'Создан договор ДГ-2026-003',                         'Договор',      3,  '192.168.1.15', '2026-03-10 14:22');
-  insertAudit.run(2, 'Петрова М.В.',  'Создан заказ ЗАК-2026-0006',                         'Заказ',        6,  '192.168.1.15', '2026-01-25 09:30');
-  insertAudit.run(2, 'Петрова М.В.',  'Создан заказ ЗАК-2026-0007',                         'Заказ',        7,  '192.168.1.15', '2026-02-10 10:00');
-  insertAudit.run(4, 'Козлов Д.В.',   'Запущено производство по задаче: Кресло «Комфорт-М»', 'Производство', 1,  '192.168.1.22', '2026-03-22 08:00');
-  insertAudit.run(4, 'Козлов Д.В.',   'Обновлён прогресс задачи: Кресло «Комфорт-М» 50%',  'Производство', 1,  '192.168.1.22', '2026-04-06 08:15');
-  insertAudit.run(4, 'Козлов Д.В.',   'Обновлён прогресс задачи: Стол переговорный 300×120 — 60%', 'Производство', 8, '192.168.1.22', '2026-04-07 09:00');
-  insertAudit.run(2, 'Петрова М.В.',  'Зарегистрирована отгрузка ТН-2026-0001',             'Отгрузка',     1,  '192.168.1.15', '2026-03-15 16:30');
-  insertAudit.run(3, 'Сидоров П.К.',  'Зарегистрирован платёж по счёту ТН-2026-0001',       'Платёж',       1,  '192.168.1.18', '2026-04-10 10:00');
-  insertAudit.run(2, 'Петрова М.В.',  'Зарегистрирована рекламация РЕК-2026-001',            'Рекламация',   1,  '192.168.1.15', '2026-03-20 15:00');
-  insertAudit.run(2, 'Петрова М.В.',  'Зарегистрирована рекламация РЕК-2026-002',            'Рекламация',   2,  '192.168.1.15', '2026-04-04 11:30');
-  insertAudit.run(5, 'Новиков А.И.',  'Статус рекламации РЕК-2026-001 изменён: open → in_review', 'Рекламация', 1, '192.168.1.20', '2026-03-22 09:00');
-  insertAudit.run(1, 'Иванов А.С.',   'Договор ДГ-2026-008 переведён в статус: suspended',  'Договор',      8,  '127.0.0.1',    '2026-03-18 14:00');
-  insertAudit.run(1, 'Иванов А.С.',   'Договор ДГ-2026-009 переведён в статус: suspended',  'Договор',      9,  '127.0.0.1',    '2026-03-30 11:00');
-  insertAudit.run(2, 'Петрова М.В.',  'Статус заказа ЗАК-2026-0012 изменён: ready_for_shipment', 'Заказ',  12, '192.168.1.15', '2026-04-08 10:00');
-  insertAudit.run(2, 'Петрова М.В.',  'Статус заказа ЗАК-2026-0013 изменён: ready_for_shipment', 'Заказ',  13, '192.168.1.15', '2026-04-09 09:30');
-  insertAudit.run(2, 'Петрова М.В.',  'Загружен файл для договора ДГ-2026-001',              'Договор',      1,  '192.168.1.15', '2026-01-15 14:25');
-  insertAudit.run(1, 'Иванов А.С.',   'Создан маршрут доставки на 15.04.2026',               'Маршрут',      3,  '127.0.0.1',    '2026-04-11 09:00');
-  insertAudit.run(1, 'Иванов А.С.',   'Назначен водитель Громов В.А. на маршрут №3',         'Маршрут',      3,  '127.0.0.1',    '2026-04-11 09:05');
-  insertAudit.run(3, 'Сидоров П.К.',  'Начислена пеня по платежу ТН-2026-0015 — 1 500 ₽',   'Платёж',       6,  '192.168.1.18', '2026-04-11 10:00');
-  insertAudit.run(3, 'Сидоров П.К.',  'Начислена пеня по платежу ТН-2026-0020 — 2 790 ₽',   'Платёж',       7,  '192.168.1.18', '2026-04-11 10:05');
-  insertAudit.run(6, 'Морозова Е.А.', 'Выгружен аналитический отчёт за Q1 2026',             'Отчёт',        null,'192.168.1.25', '2026-04-10 17:00');
-})();
-console.log('✓ Audit log seeded (25)');
-
-// ─────────────────────────────────────────────────────────
-// DONE
-// ─────────────────────────────────────────────────────────
-console.log('\n✅ Database seeded successfully!');
-console.log('──────────────────────────────────────────');
-console.log('📊 Test data summary:');
-console.log('   Users:            8  (all roles covered)');
-console.log('   Counterparties:   10');
-console.log('   Contracts:        12 (active×5, draft×2, suspended×2, completed×3)');
-console.log('   Orders:           25 (planned×5, in_production×6, ready×4, shipped×5, completed×5)');
-console.log('   Order items:      53');
-console.log('   Shipments:        15 (with delivery types: pickup, courier, our_transport)');
-console.log('   Payments:         14 (paid×6, overdue×3, pending×5)');
-console.log('   Claims:            6 (open×2, in_review×2, resolved×1, closed×1)');
-console.log('   Production tasks: 20 (in_progress×12, planned×8)');
-console.log('   Drivers:           5 (4 active, 1 inactive)');
-console.log('   Delivery routes:   5 (completed×2, in_progress×1, planned×2)');
-console.log('   Notifications:    15 (for users 1,2,3,5,7)');
-console.log('   Chat messages:    12 (across 4 contracts)');
-console.log('   Audit entries:    25');
-console.log('──────────────────────────────────────────');
-console.log('🔑 Login: <email> / password123');
-console.log('   admin@furniture.ru     — admin');
-console.log('   sales@furniture.ru     — sales_manager');
-console.log('   accountant@furniture.ru— accountant');
-console.log('   prod@furniture.ru      — production_specialist');
-console.log('   prodhead@furniture.ru  — production_head');
-console.log('   analyst@furniture.ru   — analyst');
-console.log('   director@furniture.ru  — director');
-console.log('   guest@furniture.ru     — guest');
+  process.exit(0);
+})().catch(err => {
+  console.error('Seed failed:', err);
+  process.exit(1);
+});

@@ -32,7 +32,7 @@ function clearRefreshCookie(res) {
 
 // ─── Rate limiters ─────────────────────────────────────────────────────────────
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,   // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
@@ -40,7 +40,7 @@ const loginLimiter = rateLimit({
 });
 
 const mfaLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,    // 5 minutes
+  windowMs: 5 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
@@ -48,7 +48,7 @@ const mfaLimiter = rateLimit({
 });
 
 const resetLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,   // 1 hour
+  windowMs: 60 * 60 * 1000,
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
@@ -81,7 +81,6 @@ const resetConfirmSchema = z.object({
     .max(128),
 });
 
-// Validation middleware factory
 function validate(schema) {
   return (req, res, next) => {
     const result = schema.safeParse(req.body);
@@ -89,7 +88,7 @@ function validate(schema) {
       const msg = result.error.issues?.[0]?.message || 'Ошибка валидации';
       return res.status(400).json({ error: msg });
     }
-    req.body = result.data;   // use parsed & typed data
+    req.body = result.data;
     next();
   };
 }
@@ -101,12 +100,12 @@ function generateAccessToken(userId) {
   });
 }
 
-function generateRefreshToken(userId) {
+async function generateRefreshToken(userId) {
   const token = jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET, {
     expiresIn: process.env.JWT_REFRESH_EXPIRES || '7d',
   });
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  db.prepare('INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)').run(userId, token, expiresAt);
+  await db.run('INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)', [userId, token, expiresAt]);
   return token;
 }
 
@@ -116,7 +115,7 @@ function generateMfaTempToken(userId) {
 
 // ─── Account lockout helpers ───────────────────────────────────────────────────
 const MAX_ATTEMPTS = 5;
-const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+const LOCK_DURATION_MS = 15 * 60 * 1000;
 
 function checkLocked(user) {
   if (user.locked_until && new Date(user.locked_until) > new Date()) {
@@ -126,309 +125,335 @@ function checkLocked(user) {
   return null;
 }
 
-function onLoginFailure(userId) {
-  const user = db.prepare('SELECT failed_attempts FROM users WHERE id = ?').get(userId);
+async function onLoginFailure(userId) {
+  const user = await db.get('SELECT failed_attempts FROM users WHERE id = $1', [userId]);
   const attempts = (user?.failed_attempts || 0) + 1;
   if (attempts >= MAX_ATTEMPTS) {
     const lockedUntil = new Date(Date.now() + LOCK_DURATION_MS).toISOString();
-    db.prepare('UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?').run(attempts, lockedUntil, userId);
+    await db.run('UPDATE users SET failed_attempts = $1, locked_until = $2 WHERE id = $3', [attempts, lockedUntil, userId]);
   } else {
-    db.prepare('UPDATE users SET failed_attempts = ? WHERE id = ?').run(attempts, userId);
+    await db.run('UPDATE users SET failed_attempts = $1 WHERE id = $2', [attempts, userId]);
   }
 }
 
-function onLoginSuccess(userId) {
-  db.prepare("UPDATE users SET failed_attempts = 0, locked_until = NULL, last_login = datetime('now') WHERE id = ?").run(userId);
+async function onLoginSuccess(userId) {
+  await db.run("UPDATE users SET failed_attempts = 0, locked_until = NULL, last_login = NOW() WHERE id = $1", [userId]);
 }
 
 // ─── POST /api/auth/login ──────────────────────────────────────────────────────
-router.post('/login', loginLimiter, validate(loginSchema), (req, res) => {
-  const { email, password } = req.body;
+router.post('/login', loginLimiter, validate(loginSchema), async (req, res) => {
+  try {
+    const { email, password } = req.body;
 
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (!user || !user.active) {
-    return res.status(401).json({ error: 'Неверный email или пароль' });
-  }
-
-  // Check lockout before verifying password (prevent timing oracle)
-  const lockMsg = checkLocked(user);
-  if (lockMsg) {
-    return res.status(429).json({ error: lockMsg });
-  }
-
-  const passwordValid = bcrypt.compareSync(password, user.password_hash);
-  if (!passwordValid) {
-    onLoginFailure(user.id);
-    // Re-fetch to get updated attempt count for a consistent error
-    const updated = db.prepare('SELECT failed_attempts, locked_until FROM users WHERE id = ?').get(user.id);
-    const remaining = MAX_ATTEMPTS - updated.failed_attempts;
-    if (remaining <= 0) {
-      return res.status(429).json({ error: 'Аккаунт заблокирован на 15 мин. после превышения лимита попыток.' });
+    const user = await db.get('SELECT * FROM users WHERE email = $1', [email]);
+    if (!user || !user.active) {
+      return res.status(401).json({ error: 'Неверный email или пароль' });
     }
-    return res.status(401).json({ error: `Неверный email или пароль. Осталось попыток: ${remaining}` });
-  }
 
-  // MFA flow
-  if (MFA_ROLES.includes(user.role)) {
-    if (!user.mfa_enabled) {
-      const mfaToken = generateMfaTempToken(user.id);
-      return res.json({
-        requiresMfaSetup: true,
-        mfaToken,
-        user: { id: user.id, name: user.name, role: user.role, email: user.email },
-      });
-    } else {
-      const mfaToken = generateMfaTempToken(user.id);
-      return res.json({
-        requiresMfa: true,
-        mfaToken,
-        user: { id: user.id, name: user.name, role: user.role, email: user.email },
-      });
+    const lockMsg = checkLocked(user);
+    if (lockMsg) {
+      return res.status(429).json({ error: lockMsg });
     }
+
+    const passwordValid = bcrypt.compareSync(password, user.password_hash);
+    if (!passwordValid) {
+      await onLoginFailure(user.id);
+      const updated = await db.get('SELECT failed_attempts, locked_until FROM users WHERE id = $1', [user.id]);
+      const remaining = MAX_ATTEMPTS - updated.failed_attempts;
+      if (remaining <= 0) {
+        return res.status(429).json({ error: 'Аккаунт заблокирован на 15 мин. после превышения лимита попыток.' });
+      }
+      return res.status(401).json({ error: `Неверный email или пароль. Осталось попыток: ${remaining}` });
+    }
+
+    if (MFA_ROLES.includes(user.role)) {
+      if (!user.mfa_enabled) {
+        const mfaToken = generateMfaTempToken(user.id);
+        return res.json({
+          requiresMfaSetup: true,
+          mfaToken,
+          user: { id: user.id, name: user.name, role: user.role, email: user.email },
+        });
+      } else {
+        const mfaToken = generateMfaTempToken(user.id);
+        return res.json({
+          requiresMfa: true,
+          mfaToken,
+          user: { id: user.id, name: user.name, role: user.role, email: user.email },
+        });
+      }
+    }
+
+    await onLoginSuccess(user.id);
+    const accessToken = generateAccessToken(user.id);
+    const refreshToken = await generateRefreshToken(user.id);
+    setRefreshCookie(res, refreshToken);
+
+    logAudit(user.id, user.name, 'Вход в систему', 'Авторизация', null, req.ip);
+
+    return res.json({
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, position: user.position },
+      accessToken,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  // No MFA — issue tokens
-  onLoginSuccess(user.id);
-  const accessToken = generateAccessToken(user.id);
-  const refreshToken = generateRefreshToken(user.id);
-  setRefreshCookie(res, refreshToken);
-
-  logAudit(user.id, user.name, 'Вход в систему', 'Авторизация', null, req.ip);
-
-  return res.json({
-    user: { id: user.id, name: user.name, email: user.email, role: user.role, position: user.position },
-    accessToken,
-  });
 });
 
 // ─── POST /api/auth/mfa/verify ─────────────────────────────────────────────────
-router.post('/mfa/verify', mfaLimiter, validate(mfaCodeSchema), (req, res) => {
-  const { mfaToken, code } = req.body;
-
-  let payload;
+router.post('/mfa/verify', mfaLimiter, validate(mfaCodeSchema), async (req, res) => {
   try {
-    payload = jwt.verify(mfaToken, process.env.JWT_ACCESS_SECRET);
-  } catch {
-    return res.status(401).json({ error: 'Временный токен недействителен или истёк' });
+    const { mfaToken, code } = req.body;
+
+    let payload;
+    try {
+      payload = jwt.verify(mfaToken, process.env.JWT_ACCESS_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'Временный токен недействителен или истёк' });
+    }
+
+    if (payload.type !== 'mfa_pending') {
+      return res.status(401).json({ error: 'Недопустимый тип токена' });
+    }
+
+    const user = await db.get('SELECT * FROM users WHERE id = $1', [payload.userId]);
+    if (!user || !user.mfa_enabled || !user.mfa_secret) {
+      return res.status(400).json({ error: 'MFA не настроен' });
+    }
+
+    const lockMsg = checkLocked(user);
+    if (lockMsg) return res.status(429).json({ error: lockMsg });
+
+    const valid = speakeasy.totp.verify({
+      secret: user.mfa_secret,
+      encoding: 'base32',
+      token: code,
+      window: 1,
+    });
+
+    if (!valid) {
+      await onLoginFailure(user.id);
+      return res.status(401).json({ error: 'Неверный код двухфакторной аутентификации' });
+    }
+
+    await onLoginSuccess(user.id);
+    const accessToken = generateAccessToken(user.id);
+    const refreshToken = await generateRefreshToken(user.id);
+    setRefreshCookie(res, refreshToken);
+
+    logAudit(user.id, user.name, 'Вход в систему (с MFA)', 'Авторизация', null, req.ip);
+
+    return res.json({
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, position: user.position },
+      accessToken,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  if (payload.type !== 'mfa_pending') {
-    return res.status(401).json({ error: 'Недопустимый тип токена' });
-  }
-
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.userId);
-  if (!user || !user.mfa_enabled || !user.mfa_secret) {
-    return res.status(400).json({ error: 'MFA не настроен' });
-  }
-
-  const lockMsg = checkLocked(user);
-  if (lockMsg) return res.status(429).json({ error: lockMsg });
-
-  const valid = speakeasy.totp.verify({
-    secret: user.mfa_secret,
-    encoding: 'base32',
-    token: code,
-    window: 1,
-  });
-
-  if (!valid) {
-    onLoginFailure(user.id);
-    return res.status(401).json({ error: 'Неверный код двухфакторной аутентификации' });
-  }
-
-  onLoginSuccess(user.id);
-  const accessToken = generateAccessToken(user.id);
-  const refreshToken = generateRefreshToken(user.id);
-  setRefreshCookie(res, refreshToken);
-
-  logAudit(user.id, user.name, 'Вход в систему (с MFA)', 'Авторизация', null, req.ip);
-
-  return res.json({
-    user: { id: user.id, name: user.name, email: user.email, role: user.role, position: user.position },
-    accessToken,
-  });
 });
 
 // ─── POST /api/auth/mfa/setup ──────────────────────────────────────────────────
-router.post('/mfa/setup', mfaLimiter, validate(mfaTokenOnlySchema), (req, res) => {
-  const { mfaToken } = req.body;
-
-  let payload;
+router.post('/mfa/setup', mfaLimiter, validate(mfaTokenOnlySchema), async (req, res) => {
   try {
-    payload = jwt.verify(mfaToken, process.env.JWT_ACCESS_SECRET);
-  } catch {
-    return res.status(401).json({ error: 'Токен недействителен или истёк' });
+    const { mfaToken } = req.body;
+
+    let payload;
+    try {
+      payload = jwt.verify(mfaToken, process.env.JWT_ACCESS_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'Токен недействителен или истёк' });
+    }
+
+    const user = await db.get('SELECT * FROM users WHERE id = $1', [payload.userId]);
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
+    const secret = speakeasy.generateSecret({
+      name: `ContractPro (${user.email})`,
+      issuer: 'ContractPro',
+    });
+
+    await db.run('UPDATE users SET mfa_secret = $1 WHERE id = $2', [secret.base32, user.id]);
+
+    QRCode.toDataURL(secret.otpauth_url, (err, dataUrl) => {
+      if (err) return res.status(500).json({ error: 'Ошибка генерации QR-кода' });
+      res.json({ qrCode: dataUrl, secret: secret.base32 });
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.userId);
-  if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-
-  const secret = speakeasy.generateSecret({
-    name: `ContractPro (${user.email})`,
-    issuer: 'ContractPro',
-  });
-
-  db.prepare('UPDATE users SET mfa_secret = ? WHERE id = ?').run(secret.base32, user.id);
-
-  QRCode.toDataURL(secret.otpauth_url, (err, dataUrl) => {
-    if (err) return res.status(500).json({ error: 'Ошибка генерации QR-кода' });
-    res.json({ qrCode: dataUrl, secret: secret.base32 });
-  });
 });
 
 // ─── POST /api/auth/mfa/enable ─────────────────────────────────────────────────
-router.post('/mfa/enable', mfaLimiter, validate(mfaCodeSchema), (req, res) => {
-  const { mfaToken, code } = req.body;
-
-  let payload;
+router.post('/mfa/enable', mfaLimiter, validate(mfaCodeSchema), async (req, res) => {
   try {
-    payload = jwt.verify(mfaToken, process.env.JWT_ACCESS_SECRET);
-  } catch {
-    return res.status(401).json({ error: 'Токен недействителен или истёк' });
+    const { mfaToken, code } = req.body;
+
+    let payload;
+    try {
+      payload = jwt.verify(mfaToken, process.env.JWT_ACCESS_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'Токен недействителен или истёк' });
+    }
+
+    const user = await db.get('SELECT * FROM users WHERE id = $1', [payload.userId]);
+    if (!user || !user.mfa_secret) return res.status(400).json({ error: 'MFA не инициализирован' });
+
+    const valid = speakeasy.totp.verify({
+      secret: user.mfa_secret,
+      encoding: 'base32',
+      token: code,
+      window: 1,
+    });
+
+    if (!valid) {
+      return res.status(401).json({ error: 'Неверный код. Проверьте приложение аутентификатора.' });
+    }
+
+    await db.run('UPDATE users SET mfa_enabled = 1 WHERE id = $1', [user.id]);
+    await onLoginSuccess(user.id);
+    const accessToken = generateAccessToken(user.id);
+    const refreshToken = await generateRefreshToken(user.id);
+    setRefreshCookie(res, refreshToken);
+
+    logAudit(user.id, user.name, 'MFA включён', 'Авторизация', null, req.ip);
+
+    return res.json({
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, position: user.position },
+      accessToken,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.userId);
-  if (!user || !user.mfa_secret) return res.status(400).json({ error: 'MFA не инициализирован' });
-
-  const valid = speakeasy.totp.verify({
-    secret: user.mfa_secret,
-    encoding: 'base32',
-    token: code,
-    window: 1,
-  });
-
-  if (!valid) {
-    return res.status(401).json({ error: 'Неверный код. Проверьте приложение аутентификатора.' });
-  }
-
-  db.prepare('UPDATE users SET mfa_enabled = 1 WHERE id = ?').run(user.id);
-  onLoginSuccess(user.id);
-  const accessToken = generateAccessToken(user.id);
-  const refreshToken = generateRefreshToken(user.id);
-  setRefreshCookie(res, refreshToken);
-
-  logAudit(user.id, user.name, 'MFA включён', 'Авторизация', null, req.ip);
-
-  return res.json({
-    user: { id: user.id, name: user.name, email: user.email, role: user.role, position: user.position },
-    accessToken,
-  });
 });
 
 // ─── POST /api/auth/refresh ────────────────────────────────────────────────────
-router.post('/refresh', (req, res) => {
-  const refreshToken = req.cookies[REFRESH_COOKIE];
-  if (!refreshToken) return res.status(401).json({ error: 'Refresh token отсутствует' });
-
-  let payload;
+router.post('/refresh', async (req, res) => {
   try {
-    payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-  } catch {
-    clearRefreshCookie(res);
-    return res.status(401).json({ error: 'Refresh token недействителен или истёк' });
+    const refreshToken = req.cookies[REFRESH_COOKIE];
+    if (!refreshToken) return res.status(401).json({ error: 'Refresh token отсутствует' });
+
+    let payload;
+    try {
+      payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    } catch {
+      clearRefreshCookie(res);
+      return res.status(401).json({ error: 'Refresh token недействителен или истёк' });
+    }
+
+    const stored = await db.get('SELECT * FROM refresh_tokens WHERE token = $1', [refreshToken]);
+    if (!stored) {
+      clearRefreshCookie(res);
+      return res.status(401).json({ error: 'Refresh token не найден' });
+    }
+
+    if (new Date(stored.expires_at) < new Date()) {
+      await db.run('DELETE FROM refresh_tokens WHERE token = $1', [refreshToken]);
+      clearRefreshCookie(res);
+      return res.status(401).json({ error: 'Refresh token истёк' });
+    }
+
+    const user = await db.get('SELECT id, name, email, role, position, active FROM users WHERE id = $1', [payload.userId]);
+    if (!user || !user.active) {
+      clearRefreshCookie(res);
+      return res.status(401).json({ error: 'Пользователь деактивирован' });
+    }
+
+    await db.run('DELETE FROM refresh_tokens WHERE token = $1', [refreshToken]);
+    const newRefreshToken = await generateRefreshToken(user.id);
+    setRefreshCookie(res, newRefreshToken);
+
+    const newAccessToken = generateAccessToken(user.id);
+    res.json({ accessToken: newAccessToken, user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const stored = db.prepare('SELECT * FROM refresh_tokens WHERE token = ?').get(refreshToken);
-  if (!stored) {
-    clearRefreshCookie(res);
-    return res.status(401).json({ error: 'Refresh token не найден' });
-  }
-
-  if (new Date(stored.expires_at) < new Date()) {
-    db.prepare('DELETE FROM refresh_tokens WHERE token = ?').run(refreshToken);
-    clearRefreshCookie(res);
-    return res.status(401).json({ error: 'Refresh token истёк' });
-  }
-
-  const user = db.prepare('SELECT id, name, email, role, position, active FROM users WHERE id = ?').get(payload.userId);
-  if (!user || !user.active) {
-    clearRefreshCookie(res);
-    return res.status(401).json({ error: 'Пользователь деактивирован' });
-  }
-
-  // Rotate refresh token
-  db.prepare('DELETE FROM refresh_tokens WHERE token = ?').run(refreshToken);
-  const newRefreshToken = generateRefreshToken(user.id);
-  setRefreshCookie(res, newRefreshToken);
-
-  const newAccessToken = generateAccessToken(user.id);
-  res.json({ accessToken: newAccessToken, user });
 });
 
 // ─── POST /api/auth/logout ─────────────────────────────────────────────────────
-router.post('/logout', authenticate, (req, res) => {
-  const refreshToken = req.cookies[REFRESH_COOKIE];
-  if (refreshToken) {
-    db.prepare('DELETE FROM refresh_tokens WHERE token = ?').run(refreshToken);
+router.post('/logout', authenticate, async (req, res) => {
+  try {
+    const refreshToken = req.cookies[REFRESH_COOKIE];
+    if (refreshToken) {
+      await db.run('DELETE FROM refresh_tokens WHERE token = $1', [refreshToken]);
+    }
+    clearRefreshCookie(res);
+    logAudit(req.user.id, req.user.name, 'Выход из системы', 'Авторизация', null, req.ip);
+    res.json({ message: 'Выход выполнен' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  clearRefreshCookie(res);
-  logAudit(req.user.id, req.user.name, 'Выход из системы', 'Авторизация', null, req.ip);
-  res.json({ message: 'Выход выполнен' });
 });
 
 // ─── GET /api/auth/me ──────────────────────────────────────────────────────────
-router.get('/me', authenticate, (req, res) => {
-  const user = db.prepare('SELECT id, name, email, role, position, active, mfa_enabled, last_login FROM users WHERE id = ?').get(req.user.id);
-  res.json({ user });
+router.get('/me', authenticate, async (req, res) => {
+  try {
+    const user = await db.get('SELECT id, name, email, role, position, active, mfa_enabled, last_login FROM users WHERE id = $1', [req.user.id]);
+    res.json({ user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── POST /api/auth/reset-password/request ────────────────────────────────────
-router.post('/reset-password/request', resetLimiter, validate(resetRequestSchema), (req, res) => {
-  const { email } = req.body;
+router.post('/reset-password/request', resetLimiter, validate(resetRequestSchema), async (req, res) => {
+  try {
+    const { email } = req.body;
 
-  const user = db.prepare('SELECT id, name, active FROM users WHERE email = ?').get(email);
+    const user = await db.get('SELECT id, name, active FROM users WHERE email = $1', [email]);
 
-  // Always return 200 to prevent user enumeration
-  if (!user || !user.active) {
-    return res.json({ message: 'Если такой email существует, токен сброса будет создан.' });
+    if (!user || !user.active) {
+      return res.json({ message: 'Если такой email существует, токен сброса будет создан.' });
+    }
+
+    await db.run('DELETE FROM password_reset_tokens WHERE user_id = $1', [user.id]);
+
+    const crypto = require('crypto');
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+    await db.run('INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)', [user.id, resetToken, expiresAt]);
+
+    logAudit(user.id, user.name, 'Запрос сброса пароля', 'Авторизация', null, req.ip);
+
+    return res.json({
+      message: 'Токен сброса пароля создан.',
+      resetToken,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  // Invalidate previous reset tokens for this user
-  db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(user.id);
-
-  const crypto = require('crypto');
-  const resetToken = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
-
-  db.prepare('INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)').run(user.id, resetToken, expiresAt);
-
-  logAudit(user.id, user.name, 'Запрос сброса пароля', 'Авторизация', null, req.ip);
-
-  // In production this would send an email; here we return the token directly
-  return res.json({
-    message: 'Токен сброса пароля создан.',
-    resetToken,    // NOTE: in production remove this and send via email
-  });
 });
 
 // ─── POST /api/auth/reset-password/confirm ────────────────────────────────────
-router.post('/reset-password/confirm', resetLimiter, validate(resetConfirmSchema), (req, res) => {
-  const { token, password } = req.body;
+router.post('/reset-password/confirm', resetLimiter, validate(resetConfirmSchema), async (req, res) => {
+  try {
+    const { token, password } = req.body;
 
-  const record = db.prepare('SELECT * FROM password_reset_tokens WHERE token = ?').get(token);
-  if (!record || record.used) {
-    return res.status(400).json({ error: 'Токен недействителен или уже использован' });
+    const record = await db.get('SELECT * FROM password_reset_tokens WHERE token = $1', [token]);
+    if (!record || record.used) {
+      return res.status(400).json({ error: 'Токен недействителен или уже использован' });
+    }
+
+    if (new Date(record.expires_at) < new Date()) {
+      await db.run('DELETE FROM password_reset_tokens WHERE token = $1', [token]);
+      return res.status(400).json({ error: 'Срок действия токена истёк' });
+    }
+
+    const passwordHash = bcrypt.hashSync(password, 10);
+
+    await db.transaction(async (client) => {
+      await client.run('UPDATE password_reset_tokens SET used = 1 WHERE token = $1', [token]);
+      await client.run('UPDATE users SET password_hash = $1, failed_attempts = 0, locked_until = NULL WHERE id = $2', [passwordHash, record.user_id]);
+      await client.run('DELETE FROM refresh_tokens WHERE user_id = $1', [record.user_id]);
+    });
+
+    const user = await db.get('SELECT id, name FROM users WHERE id = $1', [record.user_id]);
+    logAudit(record.user_id, user?.name || '?', 'Пароль сброшен', 'Авторизация', null, req.ip);
+
+    res.json({ message: 'Пароль успешно изменён. Войдите с новым паролем.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  if (new Date(record.expires_at) < new Date()) {
-    db.prepare('DELETE FROM password_reset_tokens WHERE token = ?').run(token);
-    return res.status(400).json({ error: 'Срок действия токена истёк' });
-  }
-
-  const passwordHash = bcrypt.hashSync(password, 10);
-
-  // Mark token as used and update password in one transaction
-  db.transaction(() => {
-    db.prepare('UPDATE password_reset_tokens SET used = 1 WHERE token = ?').run(token);
-    db.prepare('UPDATE users SET password_hash = ?, failed_attempts = 0, locked_until = NULL WHERE id = ?').run(passwordHash, record.user_id);
-    // Invalidate all refresh tokens for this user
-    db.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(record.user_id);
-  })();
-
-  const user = db.prepare('SELECT id, name FROM users WHERE id = ?').get(record.user_id);
-  logAudit(record.user_id, user?.name || '?', 'Пароль сброшен', 'Авторизация', null, req.ip);
-
-  res.json({ message: 'Пароль успешно изменён. Войдите с новым паролем.' });
 });
 
 module.exports = router;

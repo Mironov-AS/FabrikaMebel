@@ -1,23 +1,50 @@
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
 const https = require('https');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const db = require('../db');
 const { authenticate, requireRole, logAudit } = require('../middleware/auth');
 const { sanitizeStr, checkLengths } = require('../middleware/validate');
 const { readConfig } = require('./llmConfig');
 
+// ─── S3 client setup ───────────────────────────────────────────────────────────
+let s3Client = null;
+function getS3Client() {
+  if (!s3Client) {
+    s3Client = new S3Client({
+      endpoint: process.env.S3_ENDPOINT ? `https://${process.env.S3_ENDPOINT}` : undefined,
+      region: process.env.S3_REGION || 'ru-1',
+      credentials: {
+        accessKeyId: process.env.S3_ACCESS_KEY || '',
+        secretAccessKey: process.env.S3_SECRET_KEY || '',
+      },
+      forcePathStyle: true,
+    });
+  }
+  return s3Client;
+}
+
+const S3_BUCKET = () => process.env.S3_BUCKET || '';
+const S3_PREFIX = 'contracts/';
+
+async function getFileBuffer(s3Key) {
+  const cmd = new GetObjectCommand({ Bucket: S3_BUCKET(), Key: s3Key });
+  const response = await getS3Client().send(cmd);
+  const chunks = [];
+  for await (const chunk of response.Body) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
 // ─── Text extraction helpers ───────────────────────────────────────────────────
-async function extractText(filePath, mimetype) {
+async function extractText(bufferOrPath, mimetype) {
   try {
-    if (mimetype === 'text/plain') {
-      return fs.readFileSync(filePath, 'utf8').slice(0, 50000);
-    }
+    const buffer = Buffer.isBuffer(bufferOrPath) ? bufferOrPath : require('fs').readFileSync(bufferOrPath);
+    if (mimetype === 'text/plain') return buffer.toString('utf8').slice(0, 50000);
     if (mimetype === 'application/pdf') {
       const pdfParse = require('pdf-parse');
-      const buffer = fs.readFileSync(filePath);
       const data = await pdfParse(buffer);
       return (data.text || '').slice(0, 50000);
     }
@@ -26,7 +53,7 @@ async function extractText(filePath, mimetype) {
       mimetype === 'application/msword'
     ) {
       const mammoth = require('mammoth');
-      const result = await mammoth.extractRawText({ path: filePath });
+      const result = await mammoth.extractRawText({ buffer });
       return (result.value || '').slice(0, 50000);
     }
   } catch (err) {
@@ -34,9 +61,6 @@ async function extractText(filePath, mimetype) {
   }
   return null;
 }
-
-const UPLOADS_DIR = path.resolve(__dirname, '../../uploads/contracts');
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // ─── AI contract analysis ──────────────────────────────────────────────────────
 async function analyzeContractWithAI(text, myCompanyName) {
@@ -110,7 +134,6 @@ ${text}`;
       let modelId;
       if (active === 'yandex') {
         const baseModel = pCfg.model || 'yandexgpt/latest';
-        // Yandex OpenAI-compatible API requires full URI: gpt://<folderId>/<model>
         modelId = pCfg.folderId ? `gpt://${pCfg.folderId}/${baseModel}` : baseModel;
       } else {
         modelId = pCfg.model || 'gpt-4o';
@@ -162,39 +185,26 @@ const ALLOWED_MIMETYPES = new Set([
   'text/plain',
 ]);
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${ext}`);
-  },
-});
-
 const upload = multer({
-  storage,
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MIMETYPES.has(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Недопустимый тип файла'));
-    }
+    if (ALLOWED_MIMETYPES.has(file.mimetype)) cb(null, true);
+    else cb(new Error('Недопустимый тип файла'));
   },
 });
 
 const VALID_CONTRACT_STATUSES = ['draft', 'active', 'suspended', 'completed'];
 
 const router = express.Router();
-
-// All routes require authentication
 router.use(authenticate);
 
 // Helper: build full contract object with relations
-function buildContract(row) {
+async function buildContract(row) {
   if (!row) return null;
-  const conditions = db.prepare('SELECT * FROM contract_conditions WHERE contract_id = ?').all(row.id);
-  const obligations = db.prepare('SELECT * FROM contract_obligations WHERE contract_id = ?').all(row.id);
-  const versions = db.prepare('SELECT * FROM contract_versions WHERE contract_id = ? ORDER BY version_num').all(row.id);
+  const conditions = await db.all('SELECT * FROM contract_conditions WHERE contract_id = $1', [row.id]);
+  const obligations = await db.all('SELECT * FROM contract_obligations WHERE contract_id = $1', [row.id]);
+  const versions = await db.all('SELECT * FROM contract_versions WHERE contract_id = $1 ORDER BY version_num', [row.id]);
   return {
     id: row.id,
     number: row.number,
@@ -216,18 +226,22 @@ function buildContract(row) {
   };
 }
 
-// GET /api/contracts/files/all — all files across all contracts (file repository)
-router.get('/files/all', (req, res) => {
-  const files = db.prepare(`
-    SELECT cf.id, cf.contract_id, cf.original_name, cf.mimetype, cf.size,
-           cf.uploaded_by_name, cf.uploaded_at,
-           c.number AS contract_number, cp.name AS counterparty_name
-    FROM contract_files cf
-    LEFT JOIN contracts c ON cf.contract_id = c.id
-    LEFT JOIN counterparties cp ON c.counterparty_id = cp.id
-    ORDER BY cf.uploaded_at DESC
-  `).all();
-  res.json(files);
+// GET /api/contracts/files/all
+router.get('/files/all', async (req, res) => {
+  try {
+    const files = await db.all(`
+      SELECT cf.id, cf.contract_id, cf.original_name, cf.mimetype, cf.size,
+             cf.uploaded_by_name, cf.uploaded_at,
+             c.number AS contract_number, cp.name AS counterparty_name
+      FROM contract_files cf
+      LEFT JOIN contracts c ON cf.contract_id = c.id
+      LEFT JOIN counterparties cp ON c.counterparty_id = cp.id
+      ORDER BY cf.uploaded_at DESC
+    `);
+    res.json(files);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/contracts/analyze-file — upload + AI extraction (before contract creation)
@@ -239,234 +253,261 @@ router.post('/analyze-file', requireRole('admin', 'sales_manager', 'director'), 
     }
     if (!req.file) return res.status(400).json({ error: 'Файл не передан' });
 
-    const filePath = path.join(UPLOADS_DIR, req.file.filename);
-    const contentText = await extractText(filePath, req.file.mimetype);
+    try {
+      const contentText = await extractText(req.file.buffer, req.file.mimetype);
 
-    const fileInfo = {
-      storedFileName: req.file.filename,
-      originalName: Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
-      mimetype: req.file.mimetype,
-      size: req.file.size,
-    };
+      // Upload to S3
+      const s3Key = `${S3_PREFIX}${uuidv4()}${path.extname(req.file.originalname)}`;
+      await getS3Client().send(new PutObjectCommand({
+        Bucket: S3_BUCKET(),
+        Key: s3Key,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype,
+      }));
 
-    // AI analysis
-    let extracted = null;
-    if (contentText && contentText.trim().length >= 30) {
-      const companySetting = db.prepare("SELECT value FROM app_settings WHERE key = 'company_name'").get();
-      const myCompanyName = companySetting?.value?.trim() || '';
-      // Pass beginning + end of document so requisites section (INN/KPP/address)
-      // at the end of the contract is always included in the analysis
-      let textForAI = contentText;
-      if (contentText.length > 30000) {
-        const head = contentText.slice(0, 18000);
-        const tail = contentText.slice(-12000);
-        textForAI = head + '\n\n[...]\n\n' + tail;
+      const fileInfo = {
+        storedFileName: s3Key,
+        originalName: Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+      };
+
+      let extracted = null;
+      if (contentText && contentText.trim().length >= 30) {
+        const companySetting = await db.get("SELECT value FROM app_settings WHERE key = 'company_name'");
+        const myCompanyName = companySetting?.value?.trim() || '';
+        let textForAI = contentText;
+        if (contentText.length > 30000) {
+          const head = contentText.slice(0, 18000);
+          const tail = contentText.slice(-12000);
+          textForAI = head + '\n\n[...]\n\n' + tail;
+        }
+        extracted = await analyzeContractWithAI(textForAI, myCompanyName);
       }
-      extracted = await analyzeContractWithAI(textForAI, myCompanyName);
+
+      let matchedCounterparty = null;
+      if (extracted?.counterparty) {
+        const all = await db.all('SELECT * FROM counterparties');
+        const cp = extracted.counterparty;
+        if (cp.inn) {
+          matchedCounterparty = all.find(c => c.inn && c.inn.trim() === cp.inn.trim()) || null;
+        }
+        if (!matchedCounterparty && cp.name) {
+          const nl = cp.name.toLowerCase().replace(/[«»"']/g, '').trim();
+          matchedCounterparty = all.find(c => {
+            const cl = c.name.toLowerCase().replace(/[«»"']/g, '').trim();
+            return cl === nl || cl.includes(nl) || nl.includes(cl);
+          }) || null;
+        }
+      }
+
+      res.json({ ...fileInfo, extracted, matchedCounterparty: matchedCounterparty || null });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
     }
-
-    // Find matching counterparty
-    let matchedCounterparty = null;
-    if (extracted?.counterparty) {
-      const all = db.prepare('SELECT * FROM counterparties').all();
-      const cp = extracted.counterparty;
-      if (cp.inn) {
-        matchedCounterparty = all.find(c => c.inn && c.inn.trim() === cp.inn.trim()) || null;
-      }
-      if (!matchedCounterparty && cp.name) {
-        const nl = cp.name.toLowerCase().replace(/[«»"']/g, '').trim();
-        matchedCounterparty = all.find(c => {
-          const cl = c.name.toLowerCase().replace(/[«»"']/g, '').trim();
-          return cl === nl || cl.includes(nl) || nl.includes(cl);
-        }) || null;
-      }
-    }
-
-    res.json({ ...fileInfo, extracted, matchedCounterparty: matchedCounterparty || null });
   });
 });
 
 // GET /api/contracts
-router.get('/', (req, res) => {
-  const rows = db.prepare('SELECT * FROM contracts ORDER BY created_at DESC').all();
-  res.json(rows.map(buildContract));
+router.get('/', async (req, res) => {
+  try {
+    const rows = await db.all('SELECT * FROM contracts ORDER BY created_at DESC');
+    const contracts = await Promise.all(rows.map(buildContract));
+    res.json(contracts);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/contracts/:id
-router.get('/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM contracts WHERE id = ?').get(req.params.id);
-  if (!row) return res.status(404).json({ error: 'Договор не найден' });
-  res.json(buildContract(row));
+router.get('/:id', async (req, res) => {
+  try {
+    const row = await db.get('SELECT * FROM contracts WHERE id = $1', [req.params.id]);
+    if (!row) return res.status(404).json({ error: 'Договор не найден' });
+    res.json(await buildContract(row));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// POST /api/contracts — sales_manager, admin
+// POST /api/contracts
 router.post('/', requireRole('admin', 'sales_manager', 'director'), async (req, res) => {
-  const {
-    number, counterpartyId, date, validUntil, status, amount, subject,
-    paymentDelay, penaltyRate, conditions = [], obligations = [],
-    tempFile,
-  } = req.body;
+  try {
+    const {
+      number, counterpartyId, date, validUntil, status, amount, subject,
+      paymentDelay, penaltyRate, conditions = [], obligations = [],
+      tempFile,
+    } = req.body;
 
-  if (!number) return res.status(400).json({ error: 'Номер договора обязателен' });
-  if (!counterpartyId) return res.status(400).json({ error: 'Контрагент обязателен' });
-  if (!date) return res.status(400).json({ error: 'Дата договора обязательна' });
-  if (!subject) return res.status(400).json({ error: 'Предмет договора обязателен' });
+    if (!number) return res.status(400).json({ error: 'Номер договора обязателен' });
+    if (!counterpartyId) return res.status(400).json({ error: 'Контрагент обязателен' });
+    if (!date) return res.status(400).json({ error: 'Дата договора обязательна' });
+    if (!subject) return res.status(400).json({ error: 'Предмет договора обязателен' });
 
-  if (status !== undefined && !VALID_CONTRACT_STATUSES.includes(status)) {
-    return res.status(400).json({ error: `Недопустимый статус. Допустимые значения: ${VALID_CONTRACT_STATUSES.join(', ')}` });
-  }
+    if (status !== undefined && !VALID_CONTRACT_STATUSES.includes(status)) {
+      return res.status(400).json({ error: `Недопустимый статус. Допустимые значения: ${VALID_CONTRACT_STATUSES.join(', ')}` });
+    }
 
-  const safeNumber = sanitizeStr(number);
-  const safeSubject = sanitizeStr(subject);
+    const safeNumber = sanitizeStr(number);
+    const safeSubject = sanitizeStr(subject);
 
-  const lenErr = checkLengths({ 'Номер договора': safeNumber, 'Предмет договора': safeSubject }, 500);
-  if (lenErr) return res.status(400).json({ error: lenErr });
+    const lenErr = checkLengths({ 'Номер договора': safeNumber, 'Предмет договора': safeSubject }, 500);
+    if (lenErr) return res.status(400).json({ error: lenErr });
 
-  const existing = db.prepare('SELECT id FROM contracts WHERE number = ?').get(safeNumber);
-  if (existing) return res.status(409).json({ error: 'Договор с таким номером уже существует' });
+    const existing = await db.get('SELECT id FROM contracts WHERE number = $1', [safeNumber]);
+    if (existing) return res.status(409).json({ error: 'Договор с таким номером уже существует' });
 
-  const result = db.prepare(`
-    INSERT INTO contracts (number, counterparty_id, date, valid_until, status, amount, subject, payment_delay, penalty_rate, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(safeNumber, counterpartyId, date, validUntil, status || 'draft', amount || 0, safeSubject, paymentDelay || 30, penaltyRate || 0.1, req.user.id);
+    const result = await db.runReturning(`
+      INSERT INTO contracts (number, counterparty_id, date, valid_until, status, amount, subject, payment_delay, penalty_rate, created_by)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `, [safeNumber, counterpartyId, date, validUntil, status || 'draft', amount || 0, safeSubject, paymentDelay || 30, penaltyRate || 0.1, req.user.id]);
 
-  const contractId = result.lastInsertRowid;
+    const contractId = result.lastInsertRowid;
 
-  // Insert conditions
-  for (const c of conditions) {
-    db.prepare('INSERT INTO contract_conditions (contract_id, text, fulfilled) VALUES (?, ?, ?)').run(contractId, c.text, c.fulfilled ? 1 : 0);
-  }
-  // Insert obligations
-  for (const o of obligations) {
-    db.prepare('INSERT INTO contract_obligations (contract_id, party, text, deadline, status) VALUES (?, ?, ?, ?, ?)').run(contractId, o.party, o.text, o.deadline || null, o.status || 'pending');
-  }
-  // Create version 1
-  db.prepare('INSERT INTO contract_versions (contract_id, version_num, date, author, changes) VALUES (?, 1, ?, ?, ?)').run(contractId, date || new Date().toISOString().slice(0, 10), req.user.name, 'Создание договора');
+    for (const c of conditions) {
+      await db.run('INSERT INTO contract_conditions (contract_id, text, fulfilled) VALUES ($1, $2, $3)', [contractId, c.text, c.fulfilled ? 1 : 0]);
+    }
+    for (const o of obligations) {
+      await db.run('INSERT INTO contract_obligations (contract_id, party, text, deadline, status) VALUES ($1, $2, $3, $4, $5)', [contractId, o.party, o.text, o.deadline || null, o.status || 'pending']);
+    }
+    await db.run('INSERT INTO contract_versions (contract_id, version_num, date, author, changes) VALUES ($1, 1, $2, $3, $4)', [contractId, date || new Date().toISOString().slice(0, 10), req.user.name, 'Создание договора']);
 
-  logAudit(req.user.id, req.user.name, `Создан договор ${number}`, 'Договор', contractId, req.ip);
+    logAudit(req.user.id, req.user.name, `Создан договор ${number}`, 'Договор', contractId, req.ip);
 
-  // Link pre-uploaded file from import if provided
-  if (tempFile?.storedFileName) {
-    const filePath = path.join(UPLOADS_DIR, tempFile.storedFileName);
-    if (fs.existsSync(filePath)) {
+    if (tempFile?.storedFileName) {
       try {
-        const fileText = await extractText(filePath, tempFile.mimetype);
-        db.prepare(`
+        // tempFile.storedFileName is now an S3 key
+        const fileBuffer = await getFileBuffer(tempFile.storedFileName);
+        const fileText = await extractText(fileBuffer, tempFile.mimetype);
+        await db.run(`
           INSERT INTO contract_files (contract_id, original_name, stored_name, mimetype, size, uploaded_by, uploaded_by_name, content_text)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(contractId, tempFile.originalName, tempFile.storedFileName, tempFile.mimetype, tempFile.size || 0, req.user.id, req.user.name, fileText || null);
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `, [contractId, tempFile.originalName, tempFile.storedFileName, tempFile.mimetype, tempFile.size || 0, req.user.id, req.user.name, fileText || null]);
       } catch (e) {
         console.warn('Failed to link temp file to contract:', e.message);
       }
     }
-  }
 
-  const contract = buildContract(db.prepare('SELECT * FROM contracts WHERE id = ?').get(contractId));
-  res.status(201).json(contract);
+    const contract = await buildContract(await db.get('SELECT * FROM contracts WHERE id = $1', [contractId]));
+    res.status(201).json(contract);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // PUT /api/contracts/:id
-router.put('/:id', requireRole('admin', 'sales_manager', 'director'), (req, res) => {
-  const contract = db.prepare('SELECT * FROM contracts WHERE id = ?').get(req.params.id);
-  if (!contract) return res.status(404).json({ error: 'Договор не найден' });
+router.put('/:id', requireRole('admin', 'sales_manager', 'director'), async (req, res) => {
+  try {
+    const contract = await db.get('SELECT * FROM contracts WHERE id = $1', [req.params.id]);
+    if (!contract) return res.status(404).json({ error: 'Договор не найден' });
 
-  const {
-    number, counterpartyId, date, validUntil, status, amount, subject,
-    paymentDelay, penaltyRate, conditions, obligations, changeDescription,
-  } = req.body;
+    const {
+      number, counterpartyId, date, validUntil, status, amount, subject,
+      paymentDelay, penaltyRate, conditions, obligations, changeDescription,
+    } = req.body;
 
-  if (status !== undefined && !VALID_CONTRACT_STATUSES.includes(status)) {
-    return res.status(400).json({ error: `Недопустимый статус. Допустимые значения: ${VALID_CONTRACT_STATUSES.join(', ')}` });
-  }
-
-  const safeNumber = number !== undefined ? sanitizeStr(number) : undefined;
-  const safeSubject = subject !== undefined ? sanitizeStr(subject) : undefined;
-
-  const lenErr = checkLengths({
-    ...(safeNumber !== undefined ? { 'Номер договора': safeNumber } : {}),
-    ...(safeSubject !== undefined ? { 'Предмет договора': safeSubject } : {}),
-  }, 500);
-  if (lenErr) return res.status(400).json({ error: lenErr });
-
-  db.prepare(`
-    UPDATE contracts SET
-      number = COALESCE(?, number),
-      counterparty_id = COALESCE(?, counterparty_id),
-      date = COALESCE(?, date),
-      valid_until = COALESCE(?, valid_until),
-      status = COALESCE(?, status),
-      amount = COALESCE(?, amount),
-      subject = COALESCE(?, subject),
-      payment_delay = COALESCE(?, payment_delay),
-      penalty_rate = COALESCE(?, penalty_rate),
-      updated_at = datetime('now')
-    WHERE id = ?
-  `).run(safeNumber, counterpartyId, date, validUntil, status, amount, safeSubject, paymentDelay, penaltyRate, req.params.id);
-
-  // Update conditions if provided
-  if (conditions !== undefined) {
-    db.prepare('DELETE FROM contract_conditions WHERE contract_id = ?').run(req.params.id);
-    for (const c of conditions) {
-      db.prepare('INSERT INTO contract_conditions (contract_id, text, fulfilled) VALUES (?, ?, ?)').run(req.params.id, c.text, c.fulfilled ? 1 : 0);
+    if (status !== undefined && !VALID_CONTRACT_STATUSES.includes(status)) {
+      return res.status(400).json({ error: `Недопустимый статус. Допустимые значения: ${VALID_CONTRACT_STATUSES.join(', ')}` });
     }
-  }
 
-  // Update obligations if provided
-  if (obligations !== undefined) {
-    db.prepare('DELETE FROM contract_obligations WHERE contract_id = ?').run(req.params.id);
-    for (const o of obligations) {
-      db.prepare('INSERT INTO contract_obligations (contract_id, party, text, deadline, status) VALUES (?, ?, ?, ?, ?)').run(req.params.id, o.party, o.text, o.deadline || null, o.status || 'pending');
+    const safeNumber = number !== undefined ? sanitizeStr(number) : undefined;
+    const safeSubject = subject !== undefined ? sanitizeStr(subject) : undefined;
+
+    const lenErr = checkLengths({
+      ...(safeNumber !== undefined ? { 'Номер договора': safeNumber } : {}),
+      ...(safeSubject !== undefined ? { 'Предмет договора': safeSubject } : {}),
+    }, 500);
+    if (lenErr) return res.status(400).json({ error: lenErr });
+
+    await db.run(`
+      UPDATE contracts SET
+        number = COALESCE($1, number),
+        counterparty_id = COALESCE($2, counterparty_id),
+        date = COALESCE($3, date),
+        valid_until = COALESCE($4, valid_until),
+        status = COALESCE($5, status),
+        amount = COALESCE($6, amount),
+        subject = COALESCE($7, subject),
+        payment_delay = COALESCE($8, payment_delay),
+        penalty_rate = COALESCE($9, penalty_rate),
+        updated_at = NOW()
+      WHERE id = $10
+    `, [safeNumber, counterpartyId, date, validUntil, status, amount, safeSubject, paymentDelay, penaltyRate, req.params.id]);
+
+    if (conditions !== undefined) {
+      await db.run('DELETE FROM contract_conditions WHERE contract_id = $1', [req.params.id]);
+      for (const c of conditions) {
+        await db.run('INSERT INTO contract_conditions (contract_id, text, fulfilled) VALUES ($1, $2, $3)', [req.params.id, c.text, c.fulfilled ? 1 : 0]);
+      }
     }
+
+    if (obligations !== undefined) {
+      await db.run('DELETE FROM contract_obligations WHERE contract_id = $1', [req.params.id]);
+      for (const o of obligations) {
+        await db.run('INSERT INTO contract_obligations (contract_id, party, text, deadline, status) VALUES ($1, $2, $3, $4, $5)', [req.params.id, o.party, o.text, o.deadline || null, o.status || 'pending']);
+      }
+    }
+
+    const maxVersion = await db.get('SELECT MAX(version_num) as max FROM contract_versions WHERE contract_id = $1', [req.params.id]);
+    const nextVersion = (maxVersion.max || 0) + 1;
+    await db.run('INSERT INTO contract_versions (contract_id, version_num, date, author, changes) VALUES ($1, $2, $3, $4, $5)', [
+      req.params.id, nextVersion, new Date().toISOString().slice(0, 10), req.user.name, changeDescription || 'Изменение договора',
+    ]);
+
+    logAudit(req.user.id, req.user.name, `Изменён договор ${contract.number}`, 'Договор', contract.id, req.ip);
+
+    const updated = await buildContract(await db.get('SELECT * FROM contracts WHERE id = $1', [req.params.id]));
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  // Add new version
-  const maxVersion = db.prepare('SELECT MAX(version_num) as max FROM contract_versions WHERE contract_id = ?').get(req.params.id);
-  const nextVersion = (maxVersion.max || 0) + 1;
-  db.prepare('INSERT INTO contract_versions (contract_id, version_num, date, author, changes) VALUES (?, ?, ?, ?, ?)').run(
-    req.params.id, nextVersion, new Date().toISOString().slice(0, 10), req.user.name, changeDescription || 'Изменение договора'
-  );
-
-  logAudit(req.user.id, req.user.name, `Изменён договор ${contract.number}`, 'Договор', contract.id, req.ip);
-
-  const updated = buildContract(db.prepare('SELECT * FROM contracts WHERE id = ?').get(req.params.id));
-  res.json(updated);
 });
 
 // DELETE /api/contracts/:id — admin only
-router.delete('/:id', requireRole('admin'), (req, res) => {
-  const contract = db.prepare('SELECT * FROM contracts WHERE id = ?').get(req.params.id);
-  if (!contract) return res.status(404).json({ error: 'Договор не найден' });
+router.delete('/:id', requireRole('admin'), async (req, res) => {
+  try {
+    const contract = await db.get('SELECT * FROM contracts WHERE id = $1', [req.params.id]);
+    if (!contract) return res.status(404).json({ error: 'Договор не найден' });
 
-  db.prepare('DELETE FROM contracts WHERE id = ?').run(req.params.id);
-  logAudit(req.user.id, req.user.name, `Удалён договор ${contract.number}`, 'Договор', contract.id, req.ip);
-  res.json({ message: 'Договор удалён' });
+    await db.run('DELETE FROM contracts WHERE id = $1', [req.params.id]);
+    logAudit(req.user.id, req.user.name, `Удалён договор ${contract.number}`, 'Договор', contract.id, req.ip);
+    res.json({ message: 'Договор удалён' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/contracts/:id/counterparty
-router.get('/:id/counterparty', (req, res) => {
-  const contract = db.prepare('SELECT counterparty_id FROM contracts WHERE id = ?').get(req.params.id);
-  if (!contract) return res.status(404).json({ error: 'Договор не найден' });
-  const cp = db.prepare('SELECT * FROM counterparties WHERE id = ?').get(contract.counterparty_id);
-  res.json(cp);
+router.get('/:id/counterparty', async (req, res) => {
+  try {
+    const contract = await db.get('SELECT counterparty_id FROM contracts WHERE id = $1', [req.params.id]);
+    if (!contract) return res.status(404).json({ error: 'Договор не найден' });
+    const cp = await db.get('SELECT * FROM counterparties WHERE id = $1', [contract.counterparty_id]);
+    res.json(cp);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Contract Files ───────────────────────────────────────────────────────────
 
 // GET /api/contracts/:id/files
-router.get('/:id/files', (req, res) => {
-  const contract = db.prepare('SELECT id FROM contracts WHERE id = ?').get(req.params.id);
-  if (!contract) return res.status(404).json({ error: 'Договор не найден' });
-  const files = db.prepare(
-    'SELECT id, original_name, mimetype, size, uploaded_by_name, uploaded_at FROM contract_files WHERE contract_id = ? ORDER BY uploaded_at DESC'
-  ).all(req.params.id);
-  res.json(files);
+router.get('/:id/files', async (req, res) => {
+  try {
+    const contract = await db.get('SELECT id FROM contracts WHERE id = $1', [req.params.id]);
+    if (!contract) return res.status(404).json({ error: 'Договор не найден' });
+    const files = await db.all(
+      'SELECT id, original_name, mimetype, size, uploaded_by_name, uploaded_at FROM contract_files WHERE contract_id = $1 ORDER BY uploaded_at DESC',
+      [req.params.id]
+    );
+    res.json(files);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/contracts/:id/files — upload a file
 router.post('/:id/files', requireRole('admin', 'sales_manager', 'director'), (req, res) => {
-  const contract = db.prepare('SELECT id, number FROM contracts WHERE id = ?').get(req.params.id);
-  if (!contract) return res.status(404).json({ error: 'Договор не найден' });
-
   upload.single('file')(req, res, async (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
@@ -476,58 +517,85 @@ router.post('/:id/files', requireRole('admin', 'sales_manager', 'director'), (re
     }
     if (!req.file) return res.status(400).json({ error: 'Файл не передан' });
 
-    // Extract text content for AI assistant
-    const filePath = path.join(UPLOADS_DIR, req.file.filename);
-    const contentText = await extractText(filePath, req.file.mimetype);
+    try {
+      const contract = await db.get('SELECT id, number FROM contracts WHERE id = $1', [req.params.id]);
+      if (!contract) return res.status(404).json({ error: 'Договор не найден' });
 
-    const result = db.prepare(`
-      INSERT INTO contract_files (contract_id, original_name, stored_name, mimetype, size, uploaded_by, uploaded_by_name, content_text)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      contract.id,
-      Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
-      req.file.filename,
-      req.file.mimetype,
-      req.file.size,
-      req.user.id,
-      req.user.name,
-      contentText || null,
-    );
+      const contentText = await extractText(req.file.buffer, req.file.mimetype);
 
-    logAudit(req.user.id, req.user.name, `Загружен файл к договору ${contract.number}`, 'Договор', contract.id, req.ip);
+      const s3Key = `${S3_PREFIX}${uuidv4()}${path.extname(req.file.originalname)}`;
+      await getS3Client().send(new PutObjectCommand({
+        Bucket: S3_BUCKET(),
+        Key: s3Key,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype,
+      }));
 
-    const file = db.prepare('SELECT id, original_name, mimetype, size, uploaded_by_name, uploaded_at FROM contract_files WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json(file);
+      const result = await db.runReturning(`
+        INSERT INTO contract_files (contract_id, original_name, stored_name, mimetype, size, uploaded_by, uploaded_by_name, content_text)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        contract.id,
+        Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
+        s3Key,
+        req.file.mimetype,
+        req.file.size,
+        req.user.id,
+        req.user.name,
+        contentText || null,
+      ]);
+
+      logAudit(req.user.id, req.user.name, `Загружен файл к договору ${contract.number}`, 'Договор', contract.id, req.ip);
+
+      const file = await db.get('SELECT id, original_name, mimetype, size, uploaded_by_name, uploaded_at FROM contract_files WHERE id = $1', [result.lastInsertRowid]);
+      res.status(201).json(file);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
   });
 });
 
-// GET /api/contracts/:id/files/:fileId/download — download a file
-router.get('/:id/files/:fileId/download', (req, res) => {
-  const file = db.prepare('SELECT * FROM contract_files WHERE id = ? AND contract_id = ?').get(req.params.fileId, req.params.id);
-  if (!file) return res.status(404).json({ error: 'Файл не найден' });
+// GET /api/contracts/:id/files/:fileId/download — stream file from S3
+router.get('/:id/files/:fileId/download', async (req, res) => {
+  try {
+    const file = await db.get('SELECT * FROM contract_files WHERE id = $1 AND contract_id = $2', [req.params.fileId, req.params.id]);
+    if (!file) return res.status(404).json({ error: 'Файл не найден' });
 
-  const filePath = path.join(UPLOADS_DIR, file.stored_name);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Файл не найден на диске' });
+    const cmd = new GetObjectCommand({ Bucket: S3_BUCKET(), Key: file.stored_name });
+    const s3Response = await getS3Client().send(cmd);
 
-  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.original_name)}`);
-  res.setHeader('Content-Type', file.mimetype || 'application/octet-stream');
-  res.sendFile(filePath);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.original_name)}`);
+    res.setHeader('Content-Type', file.mimetype || 'application/octet-stream');
+    if (s3Response.ContentLength) {
+      res.setHeader('Content-Length', s3Response.ContentLength);
+    }
+
+    s3Response.Body.pipe(res);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // DELETE /api/contracts/:id/files/:fileId
-router.delete('/:id/files/:fileId', requireRole('admin', 'sales_manager', 'director'), (req, res) => {
-  const file = db.prepare('SELECT * FROM contract_files WHERE id = ? AND contract_id = ?').get(req.params.fileId, req.params.id);
-  if (!file) return res.status(404).json({ error: 'Файл не найден' });
+router.delete('/:id/files/:fileId', requireRole('admin', 'sales_manager', 'director'), async (req, res) => {
+  try {
+    const file = await db.get('SELECT * FROM contract_files WHERE id = $1 AND contract_id = $2', [req.params.fileId, req.params.id]);
+    if (!file) return res.status(404).json({ error: 'Файл не найден' });
 
-  const filePath = path.join(UPLOADS_DIR, file.stored_name);
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    await getS3Client().send(new DeleteObjectCommand({
+      Bucket: S3_BUCKET(),
+      Key: file.stored_name,
+    }));
 
-  db.prepare('DELETE FROM contract_files WHERE id = ?').run(file.id);
+    await db.run('DELETE FROM contract_files WHERE id = $1', [file.id]);
 
-  const contract = db.prepare('SELECT number FROM contracts WHERE id = ?').get(req.params.id);
-  logAudit(req.user.id, req.user.name, `Удалён файл "${file.original_name}" из договора ${contract?.number}`, 'Договор', req.params.id, req.ip);
+    const contract = await db.get('SELECT number FROM contracts WHERE id = $1', [req.params.id]);
+    logAudit(req.user.id, req.user.name, `Удалён файл "${file.original_name}" из договора ${contract?.number}`, 'Договор', req.params.id, req.ip);
 
-  res.json({ message: 'Файл удалён' });
+    res.json({ message: 'Файл удалён' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

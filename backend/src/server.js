@@ -5,8 +5,7 @@ const cookieParser = require('cookie-parser');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
-// Initialize DB (creates tables if needed)
-require('./db');
+const db = require('./db');
 
 const app = express();
 
@@ -88,8 +87,13 @@ module.exports = app;
 
 if (require.main === module) {
   const PORT = process.env.PORT || 3001;
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`✅ API server running on port ${PORT}`);
-    console.log(`   Health: http://localhost:${PORT}/api/health`);
+  db.init().then(() => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`✅ API server running on port ${PORT}`);
+      console.log(`   Health: http://localhost:${PORT}/api/health`);
+    });
+  }).catch(err => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
   });
 }

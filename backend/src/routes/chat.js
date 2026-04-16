@@ -19,32 +19,45 @@ function buildMessage(row) {
 }
 
 // GET /api/chat — all messages (or filter by contractId)
-router.get('/', (req, res) => {
-  const { contractId } = req.query;
-  const rows = contractId
-    ? db.prepare('SELECT * FROM chat_messages WHERE contract_id = ? ORDER BY date').all(contractId)
-    : db.prepare('SELECT * FROM chat_messages ORDER BY date DESC').all();
-  res.json(rows.map(buildMessage));
+router.get('/', async (req, res) => {
+  try {
+    const { contractId } = req.query;
+    const rows = contractId
+      ? await db.all('SELECT * FROM chat_messages WHERE contract_id = $1 ORDER BY date', [contractId])
+      : await db.all('SELECT * FROM chat_messages ORDER BY date DESC');
+    res.json(rows.map(buildMessage));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/chat
-router.post('/', (req, res) => {
-  const { contractId, counterpartyId, from, author, text } = req.body;
-  if (!text) return res.status(400).json({ error: 'Текст сообщения обязателен' });
+router.post('/', async (req, res) => {
+  try {
+    const { contractId, counterpartyId, from, author, text } = req.body;
+    if (!text) return res.status(400).json({ error: 'Текст сообщения обязателен' });
 
-  const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
-  const result = db.prepare(`
-    INSERT INTO chat_messages (contract_id, counterparty_id, from_type, author, text, date, read)
-    VALUES (?, ?, ?, ?, ?, ?, 1)
-  `).run(contractId || null, counterpartyId || null, from || 'manager', author || req.user.name, text, date);
+    const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const result = await db.runReturning(`
+      INSERT INTO chat_messages (contract_id, counterparty_id, from_type, author, text, date, read)
+      VALUES ($1, $2, $3, $4, $5, $6, 1)
+    `, [contractId || null, counterpartyId || null, from || 'manager', author || req.user.name, text, date]);
 
-  res.status(201).json(buildMessage(db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(result.lastInsertRowid)));
+    const newMsg = await db.get('SELECT * FROM chat_messages WHERE id = $1', [result.lastInsertRowid]);
+    res.status(201).json(buildMessage(newMsg));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // PUT /api/chat/:id/read
-router.put('/:id/read', (req, res) => {
-  db.prepare('UPDATE chat_messages SET read = 1 WHERE id = ?').run(req.params.id);
-  res.json({ message: 'OK' });
+router.put('/:id/read', async (req, res) => {
+  try {
+    await db.run('UPDATE chat_messages SET read = 1 WHERE id = $1', [req.params.id]);
+    res.json({ message: 'OK' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

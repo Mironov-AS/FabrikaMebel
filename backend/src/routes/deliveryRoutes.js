@@ -5,15 +5,15 @@ const { authenticate } = require('../middleware/auth');
 const router = express.Router();
 router.use(authenticate);
 
-function buildRoute(row) {
+async function buildRoute(row) {
   if (!row) return null;
-  const driver = row.driver_id ? db.prepare('SELECT * FROM drivers WHERE id = ?').get(row.driver_id) : null;
-  const shipmentLinks = db.prepare('SELECT * FROM route_shipments WHERE route_id = ? ORDER BY delivery_order').all(row.id);
-  const shipments = shipmentLinks.map(link => {
-    const s = db.prepare('SELECT * FROM shipments WHERE id = ?').get(link.shipment_id);
+  const driver = row.driver_id ? await db.get('SELECT * FROM drivers WHERE id = $1', [row.driver_id]) : null;
+  const shipmentLinks = await db.all('SELECT * FROM route_shipments WHERE route_id = $1 ORDER BY delivery_order', [row.id]);
+  const shipments = (await Promise.all(shipmentLinks.map(async (link) => {
+    const s = await db.get('SELECT * FROM shipments WHERE id = $1', [link.shipment_id]);
     if (!s) return null;
-    const items = db.prepare('SELECT * FROM shipment_items WHERE shipment_id = ?').all(s.id);
-    const cp = s.counterparty_id ? db.prepare('SELECT * FROM counterparties WHERE id = ?').get(s.counterparty_id) : null;
+    const items = await db.all('SELECT * FROM shipment_items WHERE shipment_id = $1', [s.id]);
+    const cp = s.counterparty_id ? await db.get('SELECT * FROM counterparties WHERE id = $1', [s.counterparty_id]) : null;
     return {
       id: s.id,
       orderNumber: s.order_number,
@@ -24,7 +24,7 @@ function buildRoute(row) {
       deliveryOrder: link.delivery_order,
       items: items.map(i => ({ name: i.name, quantity: i.quantity })),
     };
-  }).filter(Boolean);
+  }))).filter(Boolean);
   return {
     id: row.id,
     driverId: row.driver_id,
@@ -38,43 +38,69 @@ function buildRoute(row) {
 }
 
 // GET /api/delivery-routes?date=YYYY-MM-DD
-router.get('/', (req, res) => {
-  const { date } = req.query;
-  const rows = date
-    ? db.prepare('SELECT * FROM delivery_routes WHERE route_date = ? ORDER BY created_at DESC').all(date)
-    : db.prepare('SELECT * FROM delivery_routes ORDER BY route_date DESC').all();
-  res.json(rows.map(buildRoute));
+router.get('/', async (req, res) => {
+  try {
+    const { date } = req.query;
+    const rows = date
+      ? await db.all('SELECT * FROM delivery_routes WHERE route_date = $1 ORDER BY created_at DESC', [date])
+      : await db.all('SELECT * FROM delivery_routes ORDER BY route_date DESC');
+    const routes = await Promise.all(rows.map(buildRoute));
+    res.json(routes);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/delivery-routes
-router.post('/', (req, res) => {
-  const { driverId, routeDate, shipmentIds = [], notes } = req.body;
-  if (!routeDate) return res.status(400).json({ error: 'Дата маршрута обязательна' });
+router.post('/', async (req, res) => {
+  try {
+    const { driverId, routeDate, shipmentIds = [], notes } = req.body;
+    if (!routeDate) return res.status(400).json({ error: 'Дата маршрута обязательна' });
 
-  const result = db.prepare('INSERT INTO delivery_routes (driver_id, route_date, notes) VALUES (?, ?, ?)').run(driverId || null, routeDate, notes || null);
-  const routeId = result.lastInsertRowid;
+    const result = await db.runReturning(
+      'INSERT INTO delivery_routes (driver_id, route_date, notes) VALUES ($1, $2, $3)',
+      [driverId || null, routeDate, notes || null]
+    );
+    const routeId = result.lastInsertRowid;
 
-  shipmentIds.forEach((shipmentId, idx) => {
-    db.prepare('INSERT INTO route_shipments (route_id, shipment_id, delivery_order) VALUES (?, ?, ?)').run(routeId, shipmentId, idx + 1);
-  });
+    for (let idx = 0; idx < shipmentIds.length; idx++) {
+      await db.run(
+        'INSERT INTO route_shipments (route_id, shipment_id, delivery_order) VALUES ($1, $2, $3)',
+        [routeId, shipmentIds[idx], idx + 1]
+      );
+    }
 
-  res.status(201).json(buildRoute(db.prepare('SELECT * FROM delivery_routes WHERE id = ?').get(routeId)));
+    const newRoute = await db.get('SELECT * FROM delivery_routes WHERE id = $1', [routeId]);
+    res.status(201).json(await buildRoute(newRoute));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // PUT /api/delivery-routes/:id
-router.put('/:id', (req, res) => {
-  const { driverId, status, shipmentIds, notes } = req.body;
-  db.prepare('UPDATE delivery_routes SET driver_id = COALESCE(?, driver_id), status = COALESCE(?, status), notes = COALESCE(?, notes) WHERE id = ?')
-    .run(driverId, status, notes, req.params.id);
+router.put('/:id', async (req, res) => {
+  try {
+    const { driverId, status, shipmentIds, notes } = req.body;
+    await db.run(
+      'UPDATE delivery_routes SET driver_id = COALESCE($1, driver_id), status = COALESCE($2, status), notes = COALESCE($3, notes) WHERE id = $4',
+      [driverId, status, notes, req.params.id]
+    );
 
-  if (shipmentIds) {
-    db.prepare('DELETE FROM route_shipments WHERE route_id = ?').run(req.params.id);
-    shipmentIds.forEach((shipmentId, idx) => {
-      db.prepare('INSERT INTO route_shipments (route_id, shipment_id, delivery_order) VALUES (?, ?, ?)').run(req.params.id, shipmentId, idx + 1);
-    });
+    if (shipmentIds) {
+      await db.run('DELETE FROM route_shipments WHERE route_id = $1', [req.params.id]);
+      for (let idx = 0; idx < shipmentIds.length; idx++) {
+        await db.run(
+          'INSERT INTO route_shipments (route_id, shipment_id, delivery_order) VALUES ($1, $2, $3)',
+          [req.params.id, shipmentIds[idx], idx + 1]
+        );
+      }
+    }
+
+    const updated = await db.get('SELECT * FROM delivery_routes WHERE id = $1', [req.params.id]);
+    res.json(await buildRoute(updated));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  res.json(buildRoute(db.prepare('SELECT * FROM delivery_routes WHERE id = ?').get(req.params.id)));
 });
 
 module.exports = router;
