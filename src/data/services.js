@@ -32,7 +32,7 @@ export const SERVICES = [
     textColor: 'text-blue-700',
     borderColor: 'border-blue-200',
     description: 'Договоры, заказы, контрагенты и чат с клиентами',
-    navPaths: ['/contracts', '/counterparties', '/orders', '/chat', '/ai-assistant'],
+    navPaths: ['/contracts', '/counterparties', '/orders', '/nomenclature', '/chat', '/ai-assistant'],
     defaultPath: '/contracts',
   },
   {
