@@ -134,7 +134,9 @@ ${text}`;
       let modelId;
       if (active === 'yandex') {
         const baseModel = pCfg.model || 'yandexgpt/latest';
-        modelId = pCfg.folderId ? `gpt://${pCfg.folderId}/${baseModel}` : baseModel;
+        // If model already contains a full URI (gpt://...), use it as-is
+        modelId = baseModel.startsWith('gpt://') ? baseModel
+          : pCfg.folderId ? `gpt://${pCfg.folderId}/${baseModel}` : baseModel;
       } else {
         modelId = pCfg.model || 'gpt-4o';
       }
@@ -148,6 +150,7 @@ ${text}`;
       const raw = await new Promise((resolve, reject) => {
         const req = https.request({
           hostname, path: urlPath, method: 'POST',
+          timeout: 55000,
           headers: {
             'Authorization': authHeader,
             'Content-Type': 'application/json',
@@ -158,13 +161,18 @@ ${text}`;
           let data = '';
           httpRes.on('data', c => { data += c; });
           httpRes.on('end', () => resolve(data));
+          httpRes.on('error', reject);
         });
         req.on('error', reject);
+        req.on('timeout', () => { req.destroy(new Error('AI request timeout')); });
         req.write(body);
         req.end();
       });
       const json = JSON.parse(raw);
-      const content = json.choices?.[0]?.message?.content || '';
+      // DeepSeek models return answer in reasoning_content when content is null
+      const content = json.choices?.[0]?.message?.content
+        || json.choices?.[0]?.message?.reasoning_content
+        || '';
       const match = content.match(/\{[\s\S]*\}/);
       if (match) return JSON.parse(match[0]);
     }
@@ -286,10 +294,11 @@ router.post('/analyze-file', requireRole('admin', 'sales_manager', 'director'), 
       if (contentText && contentText.trim().length >= 30) {
         const companySetting = await db.get("SELECT value FROM app_settings WHERE key = 'company_name'");
         const myCompanyName = companySetting?.value?.trim() || '';
+        // Keep text compact: first 2500 chars (header/parties/dates) + last 3000 chars (requisites/INN)
         let textForAI = contentText;
-        if (contentText.length > 30000) {
-          const head = contentText.slice(0, 18000);
-          const tail = contentText.slice(-12000);
+        if (contentText.length > 5000) {
+          const head = contentText.slice(0, 2500);
+          const tail = contentText.slice(-3000);
           textForAI = head + '\n\n[...]\n\n' + tail;
         }
         extracted = await analyzeContractWithAI(textForAI, myCompanyName);
