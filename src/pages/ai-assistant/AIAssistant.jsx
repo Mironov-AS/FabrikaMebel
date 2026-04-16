@@ -216,13 +216,44 @@ export default function AIAssistant() {
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const abortRef = useRef(null);
+  const timeoutRef = useRef(null);
 
-  // Scroll to bottom when new messages arrive or streaming updates.
-  // Use 'auto' (instant) during streaming to avoid stacking dozens of smooth
-  // scroll animations (each chunk would queue one → browser freeze).
+  // Throttled scroll: schedule at most one scroll per animation frame during streaming.
+  const scrollPendingRef = useRef(false);
+  const scheduleScroll = useCallback((smooth) => {
+    if (scrollPendingRef.current) return;
+    scrollPendingRef.current = true;
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+      scrollPendingRef.current = false;
+    });
+  }, []);
+
+  // Scroll smoothly when a new message is committed to history.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: streaming ? 'auto' : 'smooth' });
-  }, [history, streamText, streaming]);
+    scheduleScroll(true);
+  }, [history, scheduleScroll]);
+
+  // Scroll instantly (and throttled via RAF) while streaming text arrives.
+  useEffect(() => {
+    if (streaming) scheduleScroll(false);
+  }, [streamText, streaming, scheduleScroll]);
+
+  // Throttle state updates: accumulate streamed text in a ref and flush at most every 50 ms.
+  const streamBufferRef = useRef('');
+  const flushTimerRef = useRef(null);
+
+  const flushStreamText = useCallback(() => {
+    flushTimerRef.current = null;
+    setStreamText(streamBufferRef.current);
+  }, []);
+
+  const updateStreamText = useCallback((text) => {
+    streamBufferRef.current = text;
+    if (!flushTimerRef.current) {
+      flushTimerRef.current = setTimeout(flushStreamText, 50);
+    }
+  }, [flushStreamText]);
 
   const sendMessage = useCallback(async (text) => {
     const userMsg = text.trim();
@@ -233,12 +264,28 @@ export default function AIAssistant() {
     setInput('');
     setStreaming(true);
     setStreamText('');
+    streamBufferRef.current = '';
 
     const prevHistory = [...history];
     setHistory(prev => [...prev, { role: 'user', content: userMsg }]);
 
     const controller = new AbortController();
     abortRef.current = controller;
+
+    // Hard timeout: abort after 120 s of total request time.
+    timeoutRef.current = setTimeout(() => {
+      controller.abort();
+    }, 120_000);
+
+    // Activity timeout: abort if no data arrives for 30 s.
+    let activityTimer = null;
+    const resetActivityTimer = () => {
+      clearTimeout(activityTimer);
+      activityTimer = setTimeout(() => {
+        controller.abort();
+      }, 30_000);
+    };
+    resetActivityTimer();
 
     try {
       const authHeader = api.defaults.headers.common['Authorization'] || '';
@@ -261,19 +308,24 @@ export default function AIAssistant() {
       const decoder = new TextDecoder();
       let buffer = '';
       let fullText = '';
+      let done = false;
 
-      while (true) {
-        const { done, value } = await reader.read();
+      while (!done) {
+        const result = await reader.read();
+        done = result.done;
+        if (result.value) {
+          resetActivityTimer();
+          buffer += decoder.decode(result.value, { stream: true });
+        }
         if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
         const parts = buffer.split('\n\n');
         buffer = parts.pop() ?? '';
 
         for (const part of parts) {
           if (!part.startsWith('data: ')) continue;
           const raw = part.slice(6).trim();
-          if (raw === '[DONE]') break;
+          if (raw === '[DONE]') { done = true; break; }
 
           try {
             const data = JSON.parse(raw);
@@ -285,7 +337,7 @@ export default function AIAssistant() {
             }
             if (data.text) {
               fullText += data.text;
-              setStreamText(fullText);
+              updateStreamText(fullText);
             }
           } catch (parseErr) {
             if (parseErr.message !== 'Unexpected end of JSON input') throw parseErr;
@@ -293,20 +345,42 @@ export default function AIAssistant() {
         }
       }
 
+      // Flush any pending throttled update before committing to history.
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+      setStreamText(fullText);
+
       setHistory(prev => [...prev, { role: 'assistant', content: fullText }]);
     } catch (err) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
       if (err.name !== 'AbortError') {
         const msg = err.message || 'Ошибка при обращении к ИИ-ассистенту';
         if (msg.includes('ANTHROPIC_API_KEY') || msg.includes('401')) setApiKeyMissing(true);
         setError(msg);
+      } else {
+        // AbortError — could be manual stop or timeout.
+        const isTimeout = !controller.signal.aborted || timeoutRef.current === null;
+        const accumulated = streamBufferRef.current;
+        if (accumulated) {
+          // Partial response received — commit what we have.
+          setHistory(prev => [...prev, { role: 'assistant', content: accumulated }]);
+        } else {
+          setError('Запрос был прерван или превышено время ожидания ответа от ИИ-ассистента.');
+        }
+        void isTimeout; // suppress unused warning
       }
     } finally {
+      clearTimeout(activityTimer);
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
       setStreaming(false);
       setStreamText('');
+      streamBufferRef.current = '';
       abortRef.current = null;
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [history, streaming]);
+  }, [history, streaming, updateStreamText]);
 
   function handleKeyDown(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
