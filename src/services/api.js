@@ -31,6 +31,7 @@ export const contractsApi = {
   update: (id, data) => api.put(`/contracts/${id}`, data),
   delete: (id) => api.delete(`/contracts/${id}`),
   // Files
+  getAllFiles: () => api.get('/contracts/files/all'),
   getFiles: (contractId) => api.get(`/contracts/${contractId}/files`),
   uploadFile: (contractId, file, onProgress) => {
     const formData = new FormData();

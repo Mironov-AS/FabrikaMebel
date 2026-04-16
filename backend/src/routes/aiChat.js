@@ -88,6 +88,32 @@ function buildSystemPrompt() {
     new Date(o.shipment_deadline) >= new Date(today)
   ).sort((a, b) => new Date(a.shipment_deadline) - new Date(b.shipment_deadline));
 
+  // Contract files with extracted text
+  const contractFiles = db.prepare(`
+    SELECT cf.contract_id, cf.original_name, cf.mimetype, cf.content_text,
+           c.number AS contract_number
+    FROM contract_files cf
+    LEFT JOIN contracts c ON cf.contract_id = c.id
+    WHERE cf.content_text IS NOT NULL AND cf.content_text != ''
+    ORDER BY cf.uploaded_at DESC
+  `).all();
+
+  // Group files by contract
+  const filesByContract = {};
+  for (const f of contractFiles) {
+    if (!filesByContract[f.contract_number]) filesByContract[f.contract_number] = [];
+    filesByContract[f.contract_number].push(f);
+  }
+
+  const contractFilesSection = Object.keys(filesByContract).length > 0
+    ? Object.entries(filesByContract).map(([num, files]) =>
+        files.map(f => {
+          const preview = (f.content_text || '').slice(0, 3000);
+          return `### Договор №${num} — файл: ${f.original_name}\n${preview}${f.content_text.length > 3000 ? '\n...[текст обрезан]' : ''}`;
+        }).join('\n\n')
+      ).join('\n\n---\n\n')
+    : 'Нет загруженных файлов с извлечённым текстом';
+
   return `Ты — ИИ-ассистент системы управления договорами ContractPro.
 Помогаешь сотрудникам находить информацию по клиентам, договорам, заказам, платежам, отгрузкам и рекламациям.
 Отвечай на русском языке, чётко и по существу. Используй маркированные списки и структуру там, где это улучшает читаемость.
@@ -135,7 +161,12 @@ ${claims.map(c =>
 ## ПРОИЗВОДСТВО (${production.length} задач)
 ${production.map(p =>
   `- ${p.name} | Заказ №${p.order_number || '—'} | ${p.counterparty_name || '—'} | Статус: ${t(p.status)} | Прогресс: ${p.progress ?? 0}% | Срок: ${p.end_date || '—'} | Ответственный: ${p.responsible || '—'} | Приоритет: ${t(p.priority)}`
-).join('\n') || 'Нет данных'}`;
+).join('\n') || 'Нет данных'}
+
+## СОДЕРЖИМОЕ ФАЙЛОВ ДОГОВОРОВ
+Ниже приведён текст, извлечённый из загруженных документов (PDF, Word, TXT). Используй эту информацию при ответах на вопросы о содержании договоров.
+
+${contractFilesSection}`;
 }
 
 // ── Yandex GPT streaming ──────────────────────────────────────────────────────

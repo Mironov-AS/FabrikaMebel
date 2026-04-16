@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
-  cacheDir: '/tmp/vite-cache',
+  cacheDir: process.env.VITE_CACHE_DIR || '/tmp/vite-cache',
   plugins: [react()],
   test: {
     environment: 'jsdom',
@@ -26,7 +26,7 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3002',
         changeOrigin: true,
       },
     },

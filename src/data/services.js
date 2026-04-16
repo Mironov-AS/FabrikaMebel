@@ -2,7 +2,7 @@ import {
   TrendingUp, Factory, Truck,
   CreditCard, BarChart3, Settings, AlertCircle,
   LayoutDashboard, FileText, ShoppingCart, MessageSquare,
-  ClipboardList, PackageCheck, Building2, Bot, BookOpen,
+  ClipboardList, PackageCheck, Building2, Bot, BookOpen, Archive,
 } from 'lucide-react';
 
 export const ALL_NAV_ITEMS = [
@@ -17,6 +17,7 @@ export const ALL_NAV_ITEMS = [
   { label: 'Рекламации',         icon: AlertCircle,     path: '/claims' },
   { label: 'Отчёты',             icon: BarChart3,       path: '/reports' },
   { label: 'Чат',                icon: MessageSquare,   path: '/chat' },
+  { label: 'Хранилище файлов',   icon: Archive,         path: '/files' },
   { label: 'ИИ-ассистент',       icon: Bot,             path: '/ai-assistant' },
   { label: 'Администрирование',  icon: Settings,        path: '/admin' },
 ];
@@ -32,7 +33,7 @@ export const SERVICES = [
     textColor: 'text-blue-700',
     borderColor: 'border-blue-200',
     description: 'Договоры, заказы, контрагенты и чат с клиентами',
-    navPaths: ['/contracts', '/counterparties', '/orders', '/nomenclature', '/chat', '/ai-assistant'],
+    navPaths: ['/contracts', '/counterparties', '/orders', '/nomenclature', '/chat', '/files', '/ai-assistant'],
     defaultPath: '/contracts',
   },
   {
@@ -110,7 +111,7 @@ export const SERVICES = [
     textColor: 'text-gray-700',
     borderColor: 'border-gray-200',
     description: 'Настройки системы и управление',
-    navPaths: ['/admin', '/nomenclature', '/ai-assistant'],
+    navPaths: ['/admin', '/nomenclature', '/files', '/ai-assistant'],
     defaultPath: '/admin',
   },
   {

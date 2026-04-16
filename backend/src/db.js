@@ -303,6 +303,12 @@ db.exec(`
   );
 `);
 
+// Add content_text column to contract_files if missing
+const contractFilesCols = db.pragma('table_info(contract_files)').map(c => c.name);
+if (!contractFilesCols.includes('content_text')) {
+  db.exec('ALTER TABLE contract_files ADD COLUMN content_text TEXT');
+}
+
 // Add delivery_address column to counterparties if missing
 const cpCols = db.pragma('table_info(counterparties)').map(c => c.name);
 if (!cpCols.includes('delivery_address')) {

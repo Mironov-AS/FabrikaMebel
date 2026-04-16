@@ -7,6 +7,32 @@ const db = require('../db');
 const { authenticate, requireRole, logAudit } = require('../middleware/auth');
 const { sanitizeStr, checkLengths } = require('../middleware/validate');
 
+// ─── Text extraction helpers ───────────────────────────────────────────────────
+async function extractText(filePath, mimetype) {
+  try {
+    if (mimetype === 'text/plain') {
+      return fs.readFileSync(filePath, 'utf8').slice(0, 50000);
+    }
+    if (mimetype === 'application/pdf') {
+      const pdfParse = require('pdf-parse');
+      const buffer = fs.readFileSync(filePath);
+      const data = await pdfParse(buffer);
+      return (data.text || '').slice(0, 50000);
+    }
+    if (
+      mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      mimetype === 'application/msword'
+    ) {
+      const mammoth = require('mammoth');
+      const result = await mammoth.extractRawText({ path: filePath });
+      return (result.value || '').slice(0, 50000);
+    }
+  } catch (err) {
+    console.warn('Text extraction failed:', err.message);
+  }
+  return null;
+}
+
 const UPLOADS_DIR = path.resolve(__dirname, '../../uploads/contracts');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
@@ -74,6 +100,20 @@ function buildContract(row) {
     versions: versions.map(v => ({ version: v.version_num, date: v.date, author: v.author, changes: v.changes })),
   };
 }
+
+// GET /api/contracts/files/all — all files across all contracts (file repository)
+router.get('/files/all', (req, res) => {
+  const files = db.prepare(`
+    SELECT cf.id, cf.contract_id, cf.original_name, cf.mimetype, cf.size,
+           cf.uploaded_by_name, cf.uploaded_at,
+           c.number AS contract_number, cp.name AS counterparty_name
+    FROM contract_files cf
+    LEFT JOIN contracts c ON cf.contract_id = c.id
+    LEFT JOIN counterparties cp ON c.counterparty_id = cp.id
+    ORDER BY cf.uploaded_at DESC
+  `).all();
+  res.json(files);
+});
 
 // GET /api/contracts
 router.get('/', (req, res) => {
@@ -239,7 +279,7 @@ router.post('/:id/files', requireRole('admin', 'sales_manager', 'director'), (re
   const contract = db.prepare('SELECT id, number FROM contracts WHERE id = ?').get(req.params.id);
   if (!contract) return res.status(404).json({ error: 'Договор не найден' });
 
-  upload.single('file')(req, res, (err) => {
+  upload.single('file')(req, res, async (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({ error: 'Файл слишком большой (максимум 20 МБ)' });
@@ -248,9 +288,13 @@ router.post('/:id/files', requireRole('admin', 'sales_manager', 'director'), (re
     }
     if (!req.file) return res.status(400).json({ error: 'Файл не передан' });
 
+    // Extract text content for AI assistant
+    const filePath = path.join(UPLOADS_DIR, req.file.filename);
+    const contentText = await extractText(filePath, req.file.mimetype);
+
     const result = db.prepare(`
-      INSERT INTO contract_files (contract_id, original_name, stored_name, mimetype, size, uploaded_by, uploaded_by_name)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO contract_files (contract_id, original_name, stored_name, mimetype, size, uploaded_by, uploaded_by_name, content_text)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       contract.id,
       req.file.originalname,
@@ -259,6 +303,7 @@ router.post('/:id/files', requireRole('admin', 'sales_manager', 'director'), (re
       req.file.size,
       req.user.id,
       req.user.name,
+      contentText || null,
     );
 
     logAudit(req.user.id, req.user.name, `Загружен файл к договору ${contract.number}`, 'Договор', contract.id, req.ip);
