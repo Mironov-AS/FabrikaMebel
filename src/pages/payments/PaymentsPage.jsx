@@ -2,239 +2,18 @@ import React, { useState, useEffect } from 'react';
 import {
   CreditCard, AlertCircle, Clock, CheckCircle,
   ChevronDown, ChevronRight, Building2, FileText,
-  Plus, Trash2, Receipt, XCircle, History,
+  Plus, Trash2, Receipt, XCircle,
 } from 'lucide-react';
 import useAppStore from '../../store/appStore';
 import { formatMoney } from '../../data/mockData';
 import { daysDiff } from '../../utils/date';
 import StatusBadge from '../../components/ui/StatusBadge';
-import Modal from '../../components/ui/Modal';
 import StatCard from '../../components/ui/StatCard';
+import InvoiceBadge from './InvoiceBadge';
+import CreateInvoiceModal from './CreateInvoiceModal';
+import AddPaymentModal from './AddPaymentModal';
+import OrderRow from './OrderRow';
 
-// ── Status helpers ────────────────────────────────────────────────────────────
-const INV_STYLES = {
-  paid:       'bg-green-100 text-green-700 border border-green-200',
-  overdue:    'bg-red-100 text-red-700 border border-red-200',
-  partial:    'bg-blue-100 text-blue-700 border border-blue-200',
-  pending:    'bg-yellow-100 text-yellow-700 border border-yellow-200',
-  inactive:   'bg-gray-100 text-gray-400 border border-gray-200',
-};
-const INV_LABELS = {
-  paid:       'Оплачен',
-  overdue:    'Просрочен',
-  partial:    'Частично',
-  pending:    'Ожидается',
-  inactive:   'Аннулирован',
-};
-
-function InvoiceBadge({ status, inactive }) {
-  const key = inactive ? 'inactive' : status;
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${INV_STYLES[key] || INV_STYLES.pending}`}>
-      {INV_LABELS[key] || status}
-    </span>
-  );
-}
-
-// ── Create Invoice Modal ──────────────────────────────────────────────────────
-function CreateInvoiceModal({ isOpen, onClose, order, contracts, onSave }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const [form, setForm] = useState({ invoiceNumber: '', invoiceDate: today, dueDate: '', notes: '' });
-  const [errors, setErrors] = useState({});
-
-  const contract = order ? contracts.find(c => c.id === (order.contractId || order.contract_id)) : null;
-  const paymentDelay = contract?.paymentDelay ?? contract?.payment_delay ?? 30;
-
-  // Recalculate due date whenever invoice date changes
-  const calcDueDate = (invoiceDate) => {
-    if (!invoiceDate) return '';
-    const base = new Date(invoiceDate);
-    base.setDate(base.getDate() + paymentDelay);
-    return base.toISOString().slice(0, 10);
-  };
-
-  useEffect(() => {
-    if (order && isOpen) {
-      const invoiceDate = today;
-      setForm({
-        invoiceNumber: '',
-        invoiceDate,
-        dueDate: calcDueDate(invoiceDate),
-        notes: '',
-      });
-      setErrors({});
-    }
-  }, [order?.id, isOpen]);
-
-  const handleInvoiceDateChange = (e) => {
-    const invoiceDate = e.target.value;
-    setForm(f => ({ ...f, invoiceDate, dueDate: calcDueDate(invoiceDate) }));
-    setErrors(err => ({ ...err, invoiceDate: '' }));
-  };
-
-  const handleSave = () => {
-    const errs = {};
-    if (!form.invoiceNumber.trim()) errs.invoiceNumber = 'Укажите номер счёта';
-    if (!form.invoiceDate) errs.invoiceDate = 'Укажите дату счёта';
-    if (Object.keys(errs).length) { setErrors(errs); return; }
-    onSave({
-      orderId: order.id,
-      invoiceNumber: form.invoiceNumber.trim(),
-      invoiceDate: form.invoiceDate,
-      dueDate: form.dueDate || undefined,
-      amount: order.totalAmount || order.total_amount || 0,
-      notes: form.notes,
-    });
-    onClose();
-  };
-
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title="Создать счёт на заказ"
-      footer={
-        <>
-          <button className="btn-secondary" onClick={onClose}>Отмена</button>
-          <button className="btn-primary" onClick={handleSave}>Создать</button>
-        </>
-      }
-    >
-      {order && (
-        <div className="space-y-4">
-          <div className="p-3 bg-gray-50 rounded-lg text-sm space-y-1">
-            <p><span className="font-medium">Заказ:</span> {order.number}</p>
-            <p><span className="font-medium">Сумма заказа:</span> {formatMoney(order.totalAmount || order.total_amount || 0)}</p>
-            {contract && (
-              <p><span className="font-medium">Отсрочка по договору:</span> {paymentDelay} дн.</p>
-            )}
-          </div>
-          <div>
-            <label className="form-label">Номер счёта <span className="text-red-500">*</span></label>
-            <input
-              className={`form-input${errors.invoiceNumber ? ' border-red-400' : ''}`}
-              placeholder="Например: СЧ-2024-001"
-              value={form.invoiceNumber}
-              onChange={e => { setForm(f => ({ ...f, invoiceNumber: e.target.value })); setErrors(e => ({ ...e, invoiceNumber: '' })); }}
-            />
-            {errors.invoiceNumber && <p className="text-red-500 text-xs mt-1">{errors.invoiceNumber}</p>}
-          </div>
-          <div>
-            <label className="form-label">Дата счёта <span className="text-red-500">*</span></label>
-            <input
-              type="date"
-              className={`form-input${errors.invoiceDate ? ' border-red-400' : ''}`}
-              value={form.invoiceDate}
-              onChange={handleInvoiceDateChange}
-            />
-            {errors.invoiceDate && <p className="text-red-500 text-xs mt-1">{errors.invoiceDate}</p>}
-          </div>
-          <div>
-            <label className="form-label">
-              Срок оплаты
-              {contract && <span className="text-gray-400 font-normal ml-1">(дата счёта + {paymentDelay} дн.)</span>}
-            </label>
-            <input
-              type="date" className="form-input"
-              value={form.dueDate}
-              onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))}
-            />
-          </div>
-          <div>
-            <label className="form-label">Примечание</label>
-            <textarea
-              className="form-input resize-none" rows={2}
-              value={form.notes}
-              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-            />
-          </div>
-        </div>
-      )}
-    </Modal>
-  );
-}
-
-// ── Add Payment Modal ─────────────────────────────────────────────────────────
-function AddPaymentModal({ isOpen, onClose, invoice, onSave }) {
-  const [form, setForm] = useState({ amount: '', date: new Date().toISOString().slice(0, 10), notes: '' });
-  const [errors, setErrors] = useState({});
-
-  useEffect(() => {
-    if (invoice && isOpen) {
-      const remaining = invoice.amount - invoice.paidAmount;
-      setForm({ amount: String(remaining > 0 ? remaining.toFixed(2) : ''), date: new Date().toISOString().slice(0, 10), notes: '' });
-      setErrors({});
-    }
-  }, [invoice?.id, isOpen]);
-
-  const remaining = invoice ? invoice.amount - invoice.paidAmount : 0;
-
-  const handleSave = () => {
-    const errs = {};
-    const amt = Number(form.amount);
-    if (!amt || amt <= 0) errs.amount = 'Введите корректную сумму';
-    else if (amt > remaining + 0.01) errs.amount = `Не может превышать остаток ${formatMoney(remaining)}`;
-    if (!form.date) errs.date = 'Укажите дату оплаты';
-    if (Object.keys(errs).length) { setErrors(errs); return; }
-    onSave(invoice.id, amt, form.date, form.notes);
-    onClose();
-  };
-
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title="Зарегистрировать оплату"
-      footer={
-        <>
-          <button className="btn-secondary" onClick={onClose}>Отмена</button>
-          <button className="btn-primary" onClick={handleSave}>Сохранить</button>
-        </>
-      }
-    >
-      {invoice && (
-        <div className="space-y-4">
-          <div className="p-3 bg-gray-50 rounded-lg text-sm space-y-1">
-            <p><span className="font-medium">Счёт:</span> {invoice.invoiceNumber}</p>
-            <p><span className="font-medium">Всего по счёту:</span> {formatMoney(invoice.amount)}</p>
-            <p><span className="font-medium">Уже оплачено:</span> <span className="text-green-700">{formatMoney(invoice.paidAmount)}</span></p>
-            <p><span className="font-medium">Остаток:</span> <span className={remaining > 0 ? 'text-orange-600 font-semibold' : 'text-green-600'}>{formatMoney(remaining)}</span></p>
-          </div>
-          <div>
-            <label className="form-label">Сумма оплаты (₽) <span className="text-red-500">*</span></label>
-            <input
-              type="number" min={0.01} step={0.01}
-              className={`form-input${errors.amount ? ' border-red-400' : ''}`}
-              value={form.amount}
-              onChange={e => { setForm(f => ({ ...f, amount: e.target.value })); setErrors(e => ({ ...e, amount: '' })); }}
-            />
-            {errors.amount && <p className="text-red-500 text-xs mt-1">{errors.amount}</p>}
-          </div>
-          <div>
-            <label className="form-label">Дата оплаты <span className="text-red-500">*</span></label>
-            <input
-              type="date"
-              className={`form-input${errors.date ? ' border-red-400' : ''}`}
-              value={form.date}
-              onChange={e => { setForm(f => ({ ...f, date: e.target.value })); setErrors(e => ({ ...e, date: '' })); }}
-            />
-            {errors.date && <p className="text-red-500 text-xs mt-1">{errors.date}</p>}
-          </div>
-          <div>
-            <label className="form-label">Примечание</label>
-            <textarea
-              className="form-input resize-none" rows={2}
-              value={form.notes}
-              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-            />
-          </div>
-        </div>
-      )}
-    </Modal>
-  );
-}
-
-// ── Main page ─────────────────────────────────────────────────────────────────
 export default function PaymentsPage() {
   const [viewMode, setViewMode] = useState('grouped');
   const [expandedCps, setExpandedCps] = useState(new Set());
@@ -252,10 +31,7 @@ export default function PaymentsPage() {
     if (contracts.length > 0) setExpandedContracts(new Set(contracts.map(c => c.id)));
   }, [contracts.length]);
 
-  // ── Helpers ───────────────────────────────────────────────────────────
-  // Active (current) invoice for an order
   const orderInvoice = (orderId) => invoices.find(inv => inv.orderId === orderId && inv.isActive);
-  // All voided/inactive previous invoices for an order
   const orderVoidedInvoices = (orderId) => invoices.filter(inv => inv.orderId === orderId && !inv.isActive);
 
   const calcPenalty = (invoice) => {
@@ -264,14 +40,14 @@ export default function PaymentsPage() {
     return days * (invoice.amount - invoice.paidAmount) * 0.001;
   };
 
-  // ── Summary stats — only active invoices ──────────────────────────────
   const TODAY = new Date();
   const activeInvoices = invoices.filter(inv => inv.isActive);
   const unpaidInvoices = activeInvoices.filter(inv => inv.status !== 'paid');
   const totalReceivable = unpaidInvoices.reduce((s, inv) => s + Math.max(0, inv.amount - inv.paidAmount), 0);
   const overdueInvoices = activeInvoices.filter(inv => inv.status === 'overdue');
-  const totalOverdue    = overdueInvoices.reduce((s, inv) => s + Math.max(0, inv.amount - inv.paidAmount), 0);
-  const in7Days = new Date(TODAY); in7Days.setDate(in7Days.getDate() + 7);
+  const totalOverdue = overdueInvoices.reduce((s, inv) => s + Math.max(0, inv.amount - inv.paidAmount), 0);
+  const in7Days = new Date(TODAY);
+  in7Days.setDate(in7Days.getDate() + 7);
   const upcomingInvoices = activeInvoices.filter(inv => {
     if (inv.status === 'paid') return false;
     const d = new Date(inv.dueDate);
@@ -279,7 +55,6 @@ export default function PaymentsPage() {
   });
   const totalUpcoming = upcomingInvoices.reduce((s, inv) => s + Math.max(0, inv.amount - inv.paidAmount), 0);
 
-  // ── Build hierarchy ───────────────────────────────────────────────────
   const grouped = counterparties
     .map(cp => {
       const cpContracts = contracts
@@ -287,39 +62,26 @@ export default function PaymentsPage() {
         .map(contract => {
           const contractOrders = orders
             .filter(o => o.contractId === contract.id)
-            .map(order => {
-              const inv = orderInvoice(order.id);
-              return { ...order, invoice: inv || null };
-            });
+            .map(order => ({ ...order, invoice: orderInvoice(order.id) || null }));
           const totalInvoiced = contractOrders.reduce((s, o) => s + (o.invoice?.amount || 0), 0);
-          const totalPaid     = contractOrders.reduce((s, o) => s + (o.invoice?.paidAmount || 0), 0);
+          const totalPaid = contractOrders.reduce((s, o) => s + (o.invoice?.paidAmount || 0), 0);
           return { ...contract, orders: contractOrders, totalInvoiced, totalPaid };
         });
-      const totalOrders    = cpContracts.reduce((s, c) => s + c.orders.length, 0);
-      const totalInvoiced  = cpContracts.reduce((s, c) => s + c.totalInvoiced, 0);
-      const totalPaid      = cpContracts.reduce((s, c) => s + c.totalPaid, 0);
+      const totalOrders = cpContracts.reduce((s, c) => s + c.orders.length, 0);
+      const totalInvoiced = cpContracts.reduce((s, c) => s + c.totalInvoiced, 0);
+      const totalPaid = cpContracts.reduce((s, c) => s + c.totalPaid, 0);
       return { ...cp, contracts: cpContracts, totalOrders, totalInvoiced, totalPaid };
     })
     .filter(cp => cp.contracts.length > 0);
 
-  // ── Toggles ───────────────────────────────────────────────────────────
   const toggle = (setter) => (id) => setter(prev => {
     const next = new Set(prev);
     next.has(id) ? next.delete(id) : next.add(id);
     return next;
   });
-  const toggleCp       = toggle(setExpandedCps);
+  const toggleCp = toggle(setExpandedCps);
   const toggleContract = toggle(setExpandedContracts);
-  const toggleOrder    = toggle(setExpandedOrders);
-
-  // ── Actions ───────────────────────────────────────────────────────────
-  async function handleCreateInvoice(data) {
-    await createInvoice(data);
-  }
-
-  async function handleAddPayment(invoiceId, amount, paidDate, notes) {
-    await addInvoicePayment(invoiceId, amount, paidDate, notes);
-  }
+  const toggleOrder = toggle(setExpandedOrders);
 
   async function handleDeletePayment(invoiceId, paymentId) {
     if (!confirm('Удалить эту запись об оплате?')) return;
@@ -335,16 +97,13 @@ export default function PaymentsPage() {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Финансы</h1>
         <p className="text-sm text-gray-500 mt-0.5">Счета на заказы и контроль оплаты</p>
       </div>
 
-      {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard icon={CreditCard} label="К получению" value={formatMoney(totalReceivable)} color="blue" />
         <StatCard
@@ -357,7 +116,6 @@ export default function PaymentsPage() {
         />
       </div>
 
-      {/* View toggle */}
       <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
         {[['grouped', 'По контрагентам'], ['orders', 'По заказам'], ['flat', 'Все счета']].map(([key, label]) => (
           <button
@@ -370,15 +128,13 @@ export default function PaymentsPage() {
         ))}
       </div>
 
-      {/* ── GROUPED VIEW ─────────────────────────────────────────────── */}
+      {/* Grouped view */}
       {viewMode === 'grouped' && (
         <div className="space-y-3">
           {grouped.length === 0 ? (
             <div className="card p-10 text-center text-gray-400">Нет данных</div>
           ) : grouped.map(cp => (
             <div key={cp.id} className="card p-0 overflow-hidden">
-
-              {/* Counterparty header */}
               <button
                 className="w-full flex items-center gap-3 px-5 py-4 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
                 onClick={() => toggleCp(cp.id)}
@@ -413,13 +169,10 @@ export default function PaymentsPage() {
                   : <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />}
               </button>
 
-              {/* Contracts */}
               {expandedCps.has(cp.id) && (
                 <div className="divide-y divide-gray-100">
                   {cp.contracts.map(contract => (
                     <div key={contract.id}>
-
-                      {/* Contract sub-header */}
                       <button
                         className="w-full flex items-center gap-3 px-7 py-3 bg-white hover:bg-gray-50 transition-colors text-left border-b border-gray-100"
                         onClick={() => toggleContract(contract.id)}
@@ -446,7 +199,6 @@ export default function PaymentsPage() {
                           : <ChevronRight size={15} className="text-gray-400 flex-shrink-0" />}
                       </button>
 
-                      {/* Orders table */}
                       {expandedContracts.has(contract.id) && (
                         <div className="bg-gray-50/40">
                           {contract.orders.length === 0 ? (
@@ -492,7 +244,7 @@ export default function PaymentsPage() {
         </div>
       )}
 
-      {/* ── ORDERS VIEW ──────────────────────────────────────────────── */}
+      {/* Orders view */}
       {viewMode === 'orders' && (
         <div className="card p-0 overflow-hidden">
           <div className="overflow-x-auto">
@@ -522,7 +274,6 @@ export default function PaymentsPage() {
                         className={`border-b border-gray-100 transition-colors ${inv ? 'cursor-pointer' : ''} ${isExp ? 'bg-indigo-50/40' : overdue ? 'bg-red-50' : 'hover:bg-gray-50'}`}
                         onClick={() => inv && toggleOrder(order.id)}
                       >
-                        {/* Order number */}
                         <td className="px-4 py-3 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             {inv
@@ -536,9 +287,7 @@ export default function PaymentsPage() {
                             </div>
                           </div>
                         </td>
-                        {/* Counterparty */}
                         <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{cp?.name ?? '—'}</td>
-                        {/* Contract */}
                         <td className="px-4 py-3 whitespace-nowrap">
                           {contract
                             ? <div>
@@ -547,13 +296,10 @@ export default function PaymentsPage() {
                               </div>
                             : <span className="text-gray-300">—</span>}
                         </td>
-                        {/* Order status */}
                         <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={order.status} /></td>
-                        {/* Order amount */}
                         <td className="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">
                           {formatMoney(order.totalAmount || order.total_amount || 0)}
                         </td>
-                        {/* Invoice */}
                         <td className="px-4 py-3 whitespace-nowrap">
                           {inv
                             ? <div className="flex items-center gap-1.5 text-gray-700">
@@ -567,15 +313,11 @@ export default function PaymentsPage() {
                                 <Plus size={13} /> Создать счёт
                               </button>}
                         </td>
-                        {/* Paid */}
                         <td className="px-4 py-3 whitespace-nowrap">
-                          {inv
-                            ? inv.paidAmount > 0
-                              ? <span className="text-green-700 font-medium">{formatMoney(inv.paidAmount)}</span>
-                              : <span className="text-gray-300">—</span>
+                          {inv?.paidAmount > 0
+                            ? <span className="text-green-700 font-medium">{formatMoney(inv.paidAmount)}</span>
                             : <span className="text-gray-300">—</span>}
                         </td>
-                        {/* Remaining */}
                         <td className="px-4 py-3 whitespace-nowrap">
                           {inv
                             ? remaining > 0
@@ -583,7 +325,6 @@ export default function PaymentsPage() {
                               : <span className="text-green-600 text-xs font-medium flex items-center gap-1"><CheckCircle size={12} /> Оплачен</span>
                             : <span className="text-gray-300">—</span>}
                         </td>
-                        {/* Due date */}
                         <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
                           {inv?.dueDate
                             ? <span className={overdue ? 'text-red-600 font-medium' : ''}>
@@ -592,26 +333,18 @@ export default function PaymentsPage() {
                               </span>
                             : <span className="text-gray-300">—</span>}
                         </td>
-                        {/* Payment status */}
                         <td className="px-4 py-3 whitespace-nowrap">
-                          {inv
-                            ? <InvoiceBadge status={inv.status} />
-                            : <span className="text-gray-300 text-xs">Нет счёта</span>}
+                          {inv ? <InvoiceBadge status={inv.status} /> : <span className="text-gray-300 text-xs">Нет счёта</span>}
                         </td>
-                        {/* Action */}
                         <td className="px-4 py-3 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
                           {inv && inv.status !== 'paid' && (
-                            <button
-                              className="btn-secondary text-xs py-1 px-2"
-                              onClick={() => setAddPaymentFor(inv)}
-                            >
+                            <button className="btn-secondary text-xs py-1 px-2" onClick={() => setAddPaymentFor(inv)}>
                               + Оплата
                             </button>
                           )}
                         </td>
                       </tr>
 
-                      {/* Expanded installments */}
                       {isExp && inv && (
                         <>
                           <tr className="bg-indigo-50/30 border-b border-indigo-100/50">
@@ -673,7 +406,7 @@ export default function PaymentsPage() {
         </div>
       )}
 
-      {/* ── FLAT VIEW ────────────────────────────────────────────────── */}
+      {/* Flat view */}
       {viewMode === 'flat' && (
         <div className="card p-0 overflow-hidden">
           <div className="overflow-x-auto">
@@ -692,7 +425,7 @@ export default function PaymentsPage() {
                   <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">Нет счетов</td></tr>
                 ) : invoices.map(inv => {
                   const order = orders.find(o => o.id === inv.orderId);
-                  const cp    = counterparties.find(c => c.id === inv.counterpartyId);
+                  const cp = counterparties.find(c => c.id === inv.counterpartyId);
                   const remaining = Math.max(0, inv.amount - inv.paidAmount);
                   const overdue = inv.status === 'overdue';
                   const isInactive = !inv.isActive;
@@ -749,204 +482,19 @@ export default function PaymentsPage() {
         </div>
       )}
 
-      {/* Modals */}
       <CreateInvoiceModal
         isOpen={!!createInvoiceFor}
         onClose={() => setCreateInvoiceFor(null)}
         order={createInvoiceFor}
         contracts={contracts}
-        onSave={handleCreateInvoice}
+        onSave={createInvoice}
       />
       <AddPaymentModal
         isOpen={!!addPaymentFor}
         onClose={() => setAddPaymentFor(null)}
         invoice={addPaymentFor}
-        onSave={handleAddPayment}
+        onSave={addInvoicePayment}
       />
     </div>
-  );
-}
-
-// ── OrderRow ──────────────────────────────────────────────────────────────────
-function OrderRow({ order, invoice, voidedInvoices = [], isExpanded, onToggle, onCreateInvoice, onAddPayment, onDeletePayment, onDeactivate, calcPenalty }) {
-  const hasInstallments = invoice?.installments?.length > 0;
-  const remaining = invoice ? Math.max(0, invoice.amount - invoice.paidAmount) : 0;
-  const overdue = invoice?.status === 'overdue';
-  const hasHistory = voidedInvoices.length > 0;
-
-  return (
-    <>
-      <tr
-        className={`border-b border-gray-100 transition-colors ${(invoice || hasHistory) ? 'cursor-pointer' : ''} ${isExpanded ? 'bg-indigo-50/40' : 'hover:bg-gray-100/60'}`}
-        onClick={onToggle}
-      >
-        {/* Order number */}
-        <td className="pl-10 pr-3 py-3">
-          <div className="flex items-center gap-2">
-            {(invoice || hasHistory)
-              ? isExpanded
-                ? <ChevronDown size={14} className="text-indigo-400 flex-shrink-0" />
-                : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />
-              : <span className="inline-block w-3.5" />}
-            <div>
-              <div className="font-medium text-gray-900 whitespace-nowrap">{order.number}</div>
-              <div className="text-xs text-gray-400 whitespace-nowrap">от {order.date}</div>
-            </div>
-          </div>
-        </td>
-
-        {/* Order status */}
-        <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={order.status} /></td>
-
-        {/* Order total */}
-        <td className="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">
-          {formatMoney(order.totalAmount || order.total_amount || 0)}
-        </td>
-
-        {/* Invoice number */}
-        <td className="px-4 py-3 whitespace-nowrap">
-          {invoice
-            ? <div className="flex items-center gap-1.5 text-gray-700">
-                <Receipt size={13} className="text-gray-400" />
-                <span className="font-medium">{invoice.invoiceNumber}</span>
-                {hasHistory && (
-                  <span className="inline-flex items-center gap-0.5 text-xs text-gray-400" title={`${voidedInvoices.length} аннулированных счёта`}>
-                    <History size={11} /> {voidedInvoices.length}
-                  </span>
-                )}
-              </div>
-            : <div className="flex items-center gap-2">
-                <button
-                  className="flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 font-medium"
-                  onClick={e => { e.stopPropagation(); onCreateInvoice(); }}
-                >
-                  <Plus size={13} /> {hasHistory ? 'Выставить новый' : 'Создать счёт'}
-                </button>
-              </div>}
-        </td>
-
-        {/* Paid / Remaining */}
-        <td className="px-4 py-3 whitespace-nowrap">
-          {invoice ? (
-            <div className="text-xs space-y-0.5">
-              <div className="text-green-700 font-medium">{formatMoney(invoice.paidAmount)}</div>
-              {remaining > 0 && <div className={`${overdue ? 'text-red-500' : 'text-orange-500'} font-medium`}>−{formatMoney(remaining)}</div>}
-            </div>
-          ) : <span className="text-gray-300">—</span>}
-        </td>
-
-        {/* Payment status */}
-        <td className="px-4 py-3 whitespace-nowrap">
-          {invoice ? <InvoiceBadge status={invoice.status} /> : <span className="text-gray-300 text-xs">Нет счёта</span>}
-        </td>
-
-        {/* Action */}
-        <td className="px-4 py-3 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
-          {invoice && invoice.status !== 'paid' && (
-            <div className="flex items-center justify-end gap-2">
-              <button
-                className="btn-secondary text-xs py-1 px-2"
-                onClick={() => onAddPayment(invoice)}
-              >
-                + Оплата
-              </button>
-              <button
-                className="text-gray-400 hover:text-red-500 transition-colors"
-                title="Аннулировать счёт и выставить новый"
-                onClick={() => onDeactivate(invoice)}
-              >
-                <XCircle size={15} />
-              </button>
-            </div>
-          )}
-        </td>
-      </tr>
-
-      {/* Installments (expanded) */}
-      {isExpanded && invoice && (
-        <>
-          {/* Invoice summary row */}
-          <tr className="bg-indigo-50/30 border-b border-indigo-100/50">
-            <td className="pl-14 pr-3 py-2 text-xs text-gray-500" colSpan={3}>
-              {invoice.invoiceDate && (
-                <span className="mr-4">
-                  <span className="font-medium text-gray-700">Дата счёта:</span>{' '}
-                  <span className="text-gray-700">{invoice.invoiceDate}</span>
-                </span>
-              )}
-              <span className="font-medium text-gray-700">Срок оплаты:</span>{' '}
-              <span className={overdue ? 'text-red-600 font-medium' : 'text-gray-700'}>
-                {invoice.dueDate || '—'}
-                {overdue && ` (просрочено ${daysDiff(invoice.dueDate)} дн.)`}
-              </span>
-              {overdue && (
-                <span className="ml-3 text-red-500 font-medium">
-                  Штраф ≈ {formatMoney(calcPenalty(invoice))}
-                </span>
-              )}
-            </td>
-            <td colSpan={4} />
-          </tr>
-
-          {/* Payment installments */}
-          {hasInstallments ? invoice.installments.map(inst => (
-            <tr key={`inst-${inst.id}`} className="border-b border-gray-100 text-xs bg-indigo-50/20">
-              <td className="pl-14 pr-3 py-2.5" colSpan={2}>
-                <div className="flex items-center gap-1.5 text-gray-500">
-                  <span className="text-gray-300 text-base leading-none">└</span>
-                  <CheckCircle size={11} className="text-green-500" />
-                  <span className="text-gray-500">Оплата от {inst.paidDate}</span>
-                  {inst.notes && <span className="text-gray-400 italic">— {inst.notes}</span>}
-                </div>
-              </td>
-              <td className="px-4 py-2.5 font-semibold text-green-700">{formatMoney(inst.amount)}</td>
-              <td colSpan={3} />
-              <td className="px-4 py-2.5 text-right">
-                <button
-                  className="text-red-400 hover:text-red-600 transition-colors"
-                  title="Отменить оплату"
-                  onClick={e => { e.stopPropagation(); onDeletePayment(invoice.id, inst.id); }}
-                >
-                  <Trash2 size={13} />
-                </button>
-              </td>
-            </tr>
-          )) : (
-            <tr className="border-b border-gray-100 text-xs bg-indigo-50/20">
-              <td className="pl-14 pr-3 py-2.5 text-gray-400 italic" colSpan={7}>Платежей ещё нет</td>
-            </tr>
-          )}
-        </>
-      )}
-
-      {/* Voided invoice history — shown when expanded (even without active invoice) */}
-      {isExpanded && hasHistory && (
-        <>
-          <tr className="border-b border-gray-100 bg-gray-50/60">
-            <td className="pl-14 pr-3 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wide" colSpan={7}>
-              <div className="flex items-center gap-1.5">
-                <History size={11} /> История аннулированных счетов
-              </div>
-            </td>
-          </tr>
-          {voidedInvoices.map(vi => (
-            <tr key={`voided-${vi.id}`} className="border-b border-gray-100 text-xs bg-gray-50/40 opacity-70">
-              <td className="pl-14 pr-3 py-2" colSpan={3}>
-                <div className="flex items-center gap-2 text-gray-400">
-                  <XCircle size={11} className="text-gray-300 flex-shrink-0" />
-                  <span className="line-through">{vi.invoiceNumber}</span>
-                  <span className="text-gray-300">·</span>
-                  <span>от {vi.invoiceDate || vi.createdAt?.slice(0,10)}</span>
-                  {vi.notes && <span className="italic text-gray-300">— {vi.notes}</span>}
-                </div>
-              </td>
-              <td className="px-4 py-2 text-gray-400 line-through">{formatMoney(vi.amount)}</td>
-              <td className="px-4 py-2 text-gray-400">{vi.paidAmount > 0 ? formatMoney(vi.paidAmount) : '—'}</td>
-              <td className="px-4 py-2" colSpan={2}><InvoiceBadge status={vi.status} inactive={true} /></td>
-            </tr>
-          ))}
-        </>
-      )}
-    </>
   );
 }

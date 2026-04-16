@@ -49,16 +49,16 @@ const useAppStore = create((set, get) => ({
       ]);
 
       let users = [];
-      try { const res = await usersApi.list(); users = res.data; } catch {}
+      try { const res = await usersApi.list(); users = res.data; } catch (e) { console.warn('Failed to load users:', e.message); }
 
       let auditLog = [];
-      try { const res = await auditApi.list(); auditLog = res.data.data; } catch {}
+      try { const res = await auditApi.list(); auditLog = res.data.data; } catch (e) { console.warn('Failed to load audit log:', e.message); }
 
       let chatMessages = [];
-      try { const res = await chatApi.list(); chatMessages = res.data; } catch {}
+      try { const res = await chatApi.list(); chatMessages = res.data; } catch (e) { console.warn('Failed to load chat messages:', e.message); }
 
       let drivers = [];
-      try { const res = await driversApi.list(); drivers = res.data; } catch {}
+      try { const res = await driversApi.list(); drivers = res.data; } catch (e) { console.warn('Failed to load drivers:', e.message); }
 
       set({
         contracts: contracts.data,
@@ -277,30 +277,30 @@ const useAppStore = create((set, get) => ({
     const id = Date.now();
     const newItem = { ...item, id, status: 'active' };
     set(s => ({ nomenclature: [...s.nomenclature, newItem] }));
-    try { nomenclatureApi.create(newItem); } catch {}
+    nomenclatureApi.create(newItem).catch(e => console.warn('Failed to persist nomenclature item:', e.message));
     return newItem;
   },
   updateNomenclatureItem: (id, updates) => {
     set(s => ({
       nomenclature: s.nomenclature.map(n => n.id === id ? { ...n, ...updates } : n),
     }));
-    try { nomenclatureApi.update(id, updates); } catch {}
+    nomenclatureApi.update(id, updates).catch(e => console.warn('Failed to update nomenclature item:', e.message));
   },
   deleteNomenclatureItem: (id) => {
     set(s => ({ nomenclature: s.nomenclature.filter(n => n.id !== id) }));
-    try { nomenclatureApi.delete(id); } catch {}
+    nomenclatureApi.delete(id).catch(e => console.warn('Failed to delete nomenclature item:', e.message));
   },
   discontinueNomenclatureItem: (id) => {
     set(s => ({
       nomenclature: s.nomenclature.map(n => n.id === id ? { ...n, status: 'discontinued' } : n),
     }));
-    try { nomenclatureApi.update(id, { status: 'discontinued' }); } catch {}
+    nomenclatureApi.update(id, { status: 'discontinued' }).catch(e => console.warn('Failed to discontinue nomenclature item:', e.message));
   },
   restoreNomenclatureItem: (id) => {
     set(s => ({
       nomenclature: s.nomenclature.map(n => n.id === id ? { ...n, status: 'active' } : n),
     }));
-    try { nomenclatureApi.update(id, { status: 'active' }); } catch {}
+    nomenclatureApi.update(id, { status: 'active' }).catch(e => console.warn('Failed to restore nomenclature item:', e.message));
   },
 }));
 
