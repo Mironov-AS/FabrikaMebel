@@ -5,6 +5,7 @@ import { SERVICES, ALL_NAV_ITEMS } from '../../data/services';
 
 export default function Sidebar({ isCollapsed, onToggle }) {
   const currentServiceId = useAppStore(s => s.currentService);
+  const clearService = useAppStore(s => s.clearService);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -14,6 +15,7 @@ export default function Sidebar({ isCollapsed, onToggle }) {
     : ALL_NAV_ITEMS;
 
   function goHome() {
+    clearService();
     navigate('/');
   }
 
