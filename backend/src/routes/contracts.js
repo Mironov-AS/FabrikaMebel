@@ -59,10 +59,10 @@ async function analyzeContractWithAI(text, myCompanyName) {
   "penaltyRate": число (процент штрафа за день просрочки оплаты, например 0.01) или null,
   "counterparty": {
     "name": "полное официальное название контрагента (не нашей компании) или null",
-    "inn": "ИНН контрагента или null",
-    "kpp": "КПП контрагента или null",
-    "address": "юридический адрес контрагента или null",
-    "delivery_address": null,
+    "inn": "ИНН контрагента (только цифры, 10 или 12 знаков) или null",
+    "kpp": "КПП контрагента (только цифры, 9 знаков) или null",
+    "address": "юридический/почтовый адрес контрагента или null",
+    "delivery_address": "адрес доставки или склада контрагента, если указан отдельно, иначе null",
     "contact": "контактное лицо контрагента или null",
     "phone": "телефон контрагента или null",
     "email": "email контрагента или null"
@@ -254,7 +254,15 @@ router.post('/analyze-file', requireRole('admin', 'sales_manager', 'director'), 
     if (contentText && contentText.trim().length >= 30) {
       const companySetting = db.prepare("SELECT value FROM app_settings WHERE key = 'company_name'").get();
       const myCompanyName = companySetting?.value?.trim() || '';
-      extracted = await analyzeContractWithAI(contentText.slice(0, 15000), myCompanyName);
+      // Pass beginning + end of document so requisites section (INN/KPP/address)
+      // at the end of the contract is always included in the analysis
+      let textForAI = contentText;
+      if (contentText.length > 30000) {
+        const head = contentText.slice(0, 18000);
+        const tail = contentText.slice(-12000);
+        textForAI = head + '\n\n[...]\n\n' + tail;
+      }
+      extracted = await analyzeContractWithAI(textForAI, myCompanyName);
     }
 
     // Find matching counterparty
