@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import {
   contractsApi, ordersApi, paymentsApi, shipmentsApi,
   claimsApi, usersApi, productionApi, notificationsApi, chatApi, auditApi, counterpartiesApi,
@@ -6,7 +7,7 @@ import {
 } from '../services/api';
 import { NOMENCLATURE } from '../data/mockData';
 
-const useAppStore = create((set, get) => ({
+const useAppStore = create(persist((set, get) => ({
   // ─── Service selection ───────────────────────────────────
   currentService: null,   // id of active service workspace
   setService: (id) => set({ currentService: id }),
@@ -306,6 +307,9 @@ const useAppStore = create((set, get) => ({
     }));
     nomenclatureApi.update(id, { status: 'active' }).catch(e => console.warn('Failed to restore nomenclature item:', e.message));
   },
+}), {
+  name: 'contractpro-service',
+  partialize: (state) => ({ currentService: state.currentService }),
 }));
 
 export default useAppStore;

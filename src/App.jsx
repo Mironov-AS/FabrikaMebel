@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import { useEffect } from 'react';
 import useAppStore from './store/appStore';
 import HomePage from './pages/HomePage';
+import { SERVICES } from './data/services';
 import Layout from './components/layout/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import Dashboard from './pages/Dashboard';
@@ -50,11 +51,20 @@ function LayoutWrapper() {
   );
 }
 
+function HomeRedirect() {
+  const currentService = useAppStore(s => s.currentService);
+  const service = SERVICES.find(s => s.id === currentService);
+  if (service) {
+    return <Navigate to={service.defaultPath} replace />;
+  }
+  return <HomePage />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<HomeRedirect />} />
         <Route element={<LayoutWrapper />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/contracts" element={<ContractsList />} />
