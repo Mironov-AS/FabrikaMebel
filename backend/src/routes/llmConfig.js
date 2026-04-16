@@ -114,8 +114,18 @@ router.post('/test/:provider', async (req, res) => {
       if (folderId.startsWith('gpt://')) {
         folderId = folderId.slice(6).split('/')[0];
       }
+      // Use the configured model URI (or fallback to lite for basic connectivity check)
+      let testModelUri;
+      if (pCfg.model && pCfg.model.startsWith('gpt://')) {
+        testModelUri = pCfg.model;
+        // Override folderId from model URI to ensure consistency
+        folderId = pCfg.model.slice(6).split('/')[0];
+      } else {
+        const modelPath = pCfg.model || 'yandexgpt-lite/latest';
+        testModelUri = `gpt://${folderId}/${modelPath}`;
+      }
       const body = JSON.stringify({
-        modelUri: `gpt://${folderId}/yandexgpt-lite/latest`,
+        modelUri: testModelUri,
         completionOptions: { stream: false, temperature: 0.1, maxTokens: 5 },
         messages: [{ role: 'user', text: 'тест' }],
       });
